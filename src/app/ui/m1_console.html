@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Project_TheWorld 管理台</title>
+  <style>
+    :root { --bg:#f2f4f8; --card:#fff; --border:#d8dde6; --text:#1b2430; --muted:#5e6878; --primary:#0f6fe7; }
+    body { margin:0; font-family:"Segoe UI","PingFang SC",sans-serif; background:var(--bg); color:var(--text); }
+    .wrap { max-width:1320px; margin:18px auto; padding:0 12px 20px; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:10px; }
+    .tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+    .tab { border:1px solid var(--border); background:#fff; color:var(--text); border-radius:8px; padding:8px 10px; cursor:pointer; }
+    .tab.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+    .page { display:none; }
+    .page.active { display:block; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+    input, textarea, select { flex:1; min-width:160px; border:1px solid var(--border); border-radius:6px; padding:8px; box-sizing:border-box; }
+    textarea { min-height:96px; resize:vertical; }
+    .lg { min-height:220px; }
+    button { border:0; border-radius:6px; padding:8px 12px; background:var(--primary); color:#fff; cursor:pointer; }
+    .secondary { background:#536074; }
+    .title { font-size:15px; font-weight:700; margin-bottom:8px; }
+    .mono { font-family:Consolas,"Courier New",monospace; white-space:pre-wrap; font-size:12px; color:var(--muted); }
+    .md { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px; }
+    .md-preview { border:1px solid var(--border); border-radius:6px; padding:8px; background:#fcfdff; min-height:220px; overflow:auto; }
+    .muted { font-size:12px; color:var(--muted); }
+    @media (max-width: 900px) { .md { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="title">Project_TheWorld 新版本体管理台</div>
+      <div class="row">
+        <input id="tenantId" value="tenant-a" placeholder="X-Tenant-Id" />
+        <input id="token" value="test-token" placeholder="Bearer Token (不含前缀)" />
+      </div>
+      <div class="mono">仅使用新接口：本体绑定数据属性；对象属性仅 domain/range 绑定；能力创建不含 class_ids。</div>
+    </div>
+
+    <div class="tabs">
+      <button type="button" class="tab active" onclick="showPage('p-class', this)">本体</button>
+      <button type="button" class="tab" onclick="showPage('p-attr', this)">数据属性</button>
+      <button type="button" class="tab" onclick="showPage('p-rel', this)">对象属性</button>
+      <button type="button" class="tab" onclick="showPage('p-cap', this)">能力</button>
+      <button type="button" class="tab" onclick="showPage('p-bind', this)">关联配置</button>
+    </div>
+
+    <div id="p-class" class="card page active">
+      <div class="title">本体管理（树、继承、数据属性绑定）</div>
+      <div class="row"><input id="clsCode" placeholder="class code" /><input id="clsName" placeholder="class name" /><button type="button" onclick="createClass()">创建</button></div>
+      <div class="md">
+        <textarea id="clsDesc" class="lg" placeholder="本体描述（Markdown）" oninput="previewMd('clsDesc','clsDescPreview')"></textarea>
+        <div id="clsDescPreview" class="md-preview"></div>
+      </div>
+      <div class="row">
+        <input id="clsId" placeholder="class_id" />
+        <input id="parentId" placeholder="parent_class_id" />
+        <button type="button" onclick="addInheritance()">设置父节点</button>
+        <button type="button" class="secondary" onclick="loadClassTree()">刷新本体树</button>
+      </div>
+      <div class="row"><input id="uName" placeholder="更新 name" /><button type="button" class="secondary" onclick="updateClass()">更新本体</button></div>
+      <div class="row"><input id="bindAttrIdsOnClass" placeholder="为当前 class 绑定数据属性 IDs: 1,2,3" /><button type="button" onclick="bindAttrsOnClass()">绑定数据属性</button></div>
+      <div id="classTree" class="mono"></div>
+    </div>
+
+    <div id="p-attr" class="card page">
+      <div class="title">数据属性（全局目录）</div>
+      <div class="row"><input id="attrCode" placeholder="attribute code" /><input id="attrName" placeholder="attribute name" /><select id="attrType"><option>string</option><option>int</option><option>date</option><option>boolean</option><option>json</option></select></div>
+      <div class="md">
+        <textarea id="attrDesc" class="lg" placeholder="数据属性描述（Markdown）" oninput="previewMd('attrDesc','attrDescPreview')"></textarea>
+        <div id="attrDescPreview" class="md-preview"></div>
+      </div>
+      <div class="row"><button type="button" onclick="createAttr()">创建全局属性</button><button type="button" class="secondary" onclick="listAttrs()">刷新属性目录</button></div>
+      <div id="attrList" class="mono"></div>
+    </div>
+
+    <div id="p-rel" class="card page">
+      <div class="title">对象属性（domain/range + skill + MCP）</div>
+      <div class="row"><input id="relCode" placeholder="object property code" /><input id="relName" placeholder="object property name" /><select id="relType"><option>query</option><option>transform</option></select></div>
+      <div class="row"><input id="relDomains" placeholder="domain class ids: 1,2" /><input id="relRanges" placeholder="range class ids: 3,4" /></div>
+      <div class="md">
+        <textarea id="relDesc" class="lg" placeholder="对象属性描述（Markdown）" oninput="previewMd('relDesc','relDescPreview')"></textarea>
+        <div id="relDescPreview" class="md-preview"></div>
+      </div>
+      <div class="md">
+        <textarea id="relSkill" class="lg" placeholder="对象属性 skill 内容（Markdown）" oninput="previewMd('relSkill','relSkillPreview')"></textarea>
+        <div id="relSkillPreview" class="md-preview"></div>
+      </div>
+      <div class="row"><textarea id="relMcp" placeholder='关联 MCP(JSON 数组)，如: [{"name":"m1","entry":"..." }]' class="lg"></textarea></div>
+      <div class="row"><button type="button" onclick="createRel()">创建对象属性</button><button type="button" class="secondary" onclick="listRels()">刷新对象属性目录</button></div>
+      <div id="relList" class="mono"></div>
+    </div>
+
+    <div id="p-cap" class="card page">
+      <div class="title">能力（全局目录 + 绑定到本体）</div>
+      <div class="row"><input id="capCode" placeholder="capability code" /><input id="capName" placeholder="capability name" /></div>
+      <div class="md">
+        <textarea id="capDesc" class="lg" placeholder="能力描述（Markdown）" oninput="previewMd('capDesc','capDescPreview')"></textarea>
+        <div id="capDescPreview" class="md-preview"></div>
+      </div>
+      <div class="md">
+        <textarea id="capSkill" class="lg" placeholder="能力 skill 内容（Markdown）" oninput="previewMd('capSkill','capSkillPreview')"></textarea>
+        <div id="capSkillPreview" class="md-preview"></div>
+      </div>
+      <div class="row"><textarea id="capMcp" placeholder='关联 MCP(JSON 数组)' class="lg"></textarea></div>
+      <div class="row"><button type="button" onclick="createCap()">创建能力</button><button type="button" class="secondary" onclick="listCaps()">刷新能力目录</button></div>
+      <div class="row"><input id="bindCapClassId" placeholder="class_id" /><input id="bindCapIds" placeholder="capability_ids: 1,2" /><button type="button" onclick="bindCaps()">绑定到本体</button></div>
+      <div id="capList" class="mono"></div>
+    </div>
+
+    <div id="p-bind" class="card page">
+      <div class="title">关联配置（一本体一关联表 + 字段映射 + OWL）</div>
+      <div class="row"><input id="tbClassId" placeholder="class_id" /><input id="tbName" placeholder="table_name" /><input id="tbSchema" placeholder="table_schema" value="public" /><button type="button" onclick="saveTableBinding()">保存关联表</button></div>
+      <div class="row"><input id="fmClassId" placeholder="class_id" /><input id="fmAttrId" placeholder="data_attribute_id" /><input id="fmFieldName" placeholder="field_name" /><button type="button" onclick="saveFieldMapping()">保存字段映射</button></div>
+      <div class="row"><button type="button" class="secondary" onclick="owlValidate()">OWL 校验</button><button type="button" class="secondary" onclick="owlExport()">OWL 导出 TTL</button></div>
+      <div class="muted">说明：对象属性和本体关系以 domain/range 为准，不再提供额外绑定。</div>
+    </div>
+
+    <div class="card"><div class="title">输出</div><div id="out" class="mono"></div></div>
+  </div>
+
+  <script>
+    function h(){
+      return {
+        "Content-Type":"application/json",
+        "X-Tenant-Id":document.getElementById("tenantId").value.trim(),
+        "Authorization":"Bearer "+document.getElementById("token").value.trim()
+      };
+    }
+    function show(v){ document.getElementById("out").textContent = JSON.stringify(v, null, 2); }
+    function ids(v){ return v.split(",").map(x => Number(x.trim())).filter(x => Number.isFinite(x) && x > 0); }
+    function parseJsonArray(v){ if(!v.trim()) return []; const o = JSON.parse(v); return Array.isArray(o) ? o : []; }
+    function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+    function md(s){
+      let t = esc(s);
+      t = t.replace(/^### (.*)$/gm,"<h3>$1</h3>").replace(/^## (.*)$/gm,"<h2>$1</h2>").replace(/^# (.*)$/gm,"<h1>$1</h1>");
+      t = t.replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>").replace(/\*(.*?)\*/g,"<em>$1</em>").replace(/`([^`]+)`/g,"<code>$1</code>");
+      t = t.replace(/^- (.*)$/gm,"<li>$1</li>").replace(/(<li>.*<\/li>)/gs,"<ul>$1</ul>");
+      return t.replace(/\n/g,"<br/>");
+    }
+    function previewMd(fromId,toId){ document.getElementById(toId).innerHTML = md(document.getElementById(fromId).value); }
+    async function call(method,path,body){ const r = await fetch(path,{method,headers:h(),body:body?JSON.stringify(body):undefined}); const d = await r.json(); show(d); if(d.code!==0) throw new Error(d.message||"request failed"); return d.data; }
+
+    function showPage(pageId, tabEl){
+      document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+      document.querySelectorAll(".page").forEach(x => x.classList.remove("active"));
+      tabEl.classList.add("active");
+      document.getElementById(pageId).classList.add("active");
+    }
+
+    async function createClass(){
+      await call("POST","/api/v1/ontology/classes",{
+        code:document.getElementById("clsCode").value.trim(),
+        name:document.getElementById("clsName").value.trim(),
+        description:document.getElementById("clsDesc").value.trim()||null
+      });
+      await loadClassTree();
+    }
+    async function updateClass(){
+      await call("PUT",`/api/v1/ontology/classes/${document.getElementById("clsId").value.trim()}`,{
+        name:document.getElementById("uName").value.trim()||null,
+        description:document.getElementById("clsDesc").value.trim()||null
+      });
+      await loadClassTree();
+    }
+    async function addInheritance(){
+      await call("POST",`/api/v1/ontology/classes/${document.getElementById("clsId").value.trim()}/inheritance`,{
+        parent_class_id:Number(document.getElementById("parentId").value.trim())
+      });
+      await loadClassTree();
+    }
+    async function bindAttrsOnClass(){
+      await call("POST",`/api/v1/ontology/classes/${document.getElementById("clsId").value.trim()}/data-attributes:bind`,{
+        data_attribute_ids:ids(document.getElementById("bindAttrIdsOnClass").value)
+      });
+    }
+    async function loadClassTree(){ const d = await call("GET","/api/v1/ontology/tree"); document.getElementById("classTree").textContent = JSON.stringify(d.items||[], null, 2); }
+
+    async function createAttr(){
+      await call("POST","/api/v1/ontology/data-attributes",{
+        code:document.getElementById("attrCode").value.trim(),
+        name:document.getElementById("attrName").value.trim(),
+        data_type:document.getElementById("attrType").value,
+        description:document.getElementById("attrDesc").value.trim()||null
+      });
+      await listAttrs();
+    }
+    async function listAttrs(){ const d = await call("GET","/api/v1/ontology/data-attributes"); document.getElementById("attrList").textContent = JSON.stringify(d.items||[], null, 2); }
+
+    async function createRel(){
+      await call("POST","/api/v1/ontology/object-properties",{
+        code:document.getElementById("relCode").value.trim(),
+        name:document.getElementById("relName").value.trim(),
+        description:document.getElementById("relDesc").value.trim()||null,
+        skill_md:document.getElementById("relSkill").value.trim()||null,
+        relation_type:document.getElementById("relType").value,
+        domain_class_ids:ids(document.getElementById("relDomains").value),
+        range_class_ids:ids(document.getElementById("relRanges").value),
+        mcp_bindings_json:parseJsonArray(document.getElementById("relMcp").value)
+      });
+      await listRels();
+    }
+    async function listRels(){ const d = await call("GET","/api/v1/ontology/object-properties"); document.getElementById("relList").textContent = JSON.stringify(d.items||[], null, 2); }
+
+    async function createCap(){
+      await call("POST","/api/v1/ontology/capabilities",{
+        code:document.getElementById("capCode").value.trim(),
+        name:document.getElementById("capName").value.trim(),
+        description:document.getElementById("capDesc").value.trim()||null,
+        skill_md:document.getElementById("capSkill").value.trim()||null,
+        input_schema:{type:"object",properties:{}},
+        output_schema:{type:"object",properties:{}},
+        mcp_bindings_json:parseJsonArray(document.getElementById("capMcp").value)
+      });
+      await listCaps();
+    }
+    async function bindCaps(){
+      await call("POST",`/api/v1/ontology/classes/${document.getElementById("bindCapClassId").value.trim()}/capabilities:bind`,{
+        capability_ids:ids(document.getElementById("bindCapIds").value)
+      });
+    }
+    async function listCaps(){ const d = await call("GET","/api/v1/ontology/capabilities"); document.getElementById("capList").textContent = JSON.stringify(d.items||[], null, 2); }
+
+    async function saveTableBinding(){
+      await call("PUT",`/api/v1/ontology/classes/${document.getElementById("tbClassId").value.trim()}/table-binding`,{
+        table_name:document.getElementById("tbName").value.trim(),
+        table_schema:document.getElementById("tbSchema").value.trim()||null
+      });
+    }
+    async function saveFieldMapping(){
+      await call("PUT",`/api/v1/ontology/classes/${document.getElementById("fmClassId").value.trim()}/table-binding/field-mapping`,{
+        mappings:[{
+          data_attribute_id:Number(document.getElementById("fmAttrId").value.trim()),
+          field_name:document.getElementById("fmFieldName").value.trim()
+        }]
+      });
+    }
+    async function owlValidate(){ await call("POST","/api/v1/ontology/owl:validate",{strict:true}); }
+    async function owlExport(){ await call("GET","/api/v1/ontology/owl:export?format=ttl"); }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      ["clsDesc","attrDesc","relDesc","relSkill","capDesc","capSkill"].forEach(id => previewMd(id, id+"Preview"));
+      loadClassTree().catch(e => show({error:String(e)}));
+    });
+  </script>
+</body>
+</html>

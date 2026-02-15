@@ -1,0 +1,4 @@
+app_name: Project_TheWorld M1
+database_url: postgresql+psycopg://akyuu:akyuu@192.168.1.6:5432/gensokyo
+redis_url: redis://:akyuu@192.168.1.6:6379/0
+auth_enabled: true
