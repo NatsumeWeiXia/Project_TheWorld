@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Graph Workspace | TheWorld</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+    <style>
+        [v-cloak] { display: none; }
+        .workspace { height: 100vh; overflow: hidden; }
+        .cy-container { position: relative; height: calc(100vh - 48px); background: radial-gradient(circle at 20% 20%, #eff6ff 0%, #f8fafc 35%, #f1f5f9 100%); }
+        [data-theme="dark"] .cy-container { background: radial-gradient(circle at 20% 20%, #111827 0%, #0b1220 35%, #0f172a 100%); }
+        #cy { width: 100%; height: 100%; }
+        .tree-node { margin-left: 0.75rem; border-left: 1px solid #cbd5e1; padding-left: 0.5rem; }
+        [data-theme="dark"] .tree-node { border-left-color: #334155; }
+        .tooltip-box { position: absolute; z-index: 50; pointer-events: none; max-width: 360px; }
+    </style>
+</head>
+<body class="bg-base-100 text-base-content antialiased">
+<div id="app" v-cloak class="workspace flex flex-col">
+    <header class="h-12 border-b flex items-center justify-between px-4 bg-base-100 z-30 shadow-sm shrink-0">
+        <div class="flex items-center gap-3">
+            <span class="font-bold text-lg flex items-center gap-2">
+                <i class="fas fa-project-diagram text-primary"></i> TheWorld <span class="text-xs opacity-50 font-mono">Graph</span>
+            </span>
+            <div class="divider divider-horizontal m-0"></div>
+            <span class="text-xs opacity-60 font-mono">/graph-workspace</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <input v-model="config.tenantId" class="input input-xs input-bordered w-32" placeholder="Tenant ID" />
+            <input v-model="config.token" type="password" class="input input-xs input-bordered w-32" placeholder="Token" />
+            <button class="btn btn-xs btn-ghost" @click="toggleTheme">{{ isDarkTheme ? "Light" : "Dark" }}</button>
+            <button class="btn btn-xs btn-outline" @click="reloadResources">Reload</button>
+            <button class="btn btn-xs btn-outline" @click="fitGraph">Fit</button>
+            <button class="btn btn-xs btn-outline" @click="clearGraph">Clear</button>
+        </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden">
+        <aside class="w-[380px] border-r bg-base-200 shrink-0 overflow-hidden">
+            <div class="p-3 space-y-3 h-full overflow-hidden">
+                <div class="collapse collapse-arrow bg-base-100" :class="{ 'collapse-open': sections.dataAttributes }">
+                    <input type="checkbox" v-model="sections.dataAttributes" />
+                    <div class="collapse-title font-semibold text-sm">Data Attributes</div>
+                    <div class="collapse-content space-y-2">
+                        <input v-model="search.dataAttributes" class="input input-sm input-bordered w-full" placeholder="Search by name/code" />
+                        <div class="h-64 overflow-auto space-y-1 pr-1">
+                            <div v-for="item in filteredDataAttributes" :key="'attr-'+item.code" class="flex items-center justify-between px-2 py-1 rounded hover:bg-base-200">
+                                <button class="text-left flex-1 truncate" @click="openDetailModal('dataAttribute', item)">
+                                    <span class="font-semibold">{{ item.name }}</span>
+                                    <span class="text-xs opacity-60 ml-1">{{ item.code }}</span>
+                                </button>
+                                <button class="btn btn-xs btn-primary" @click.stop="addResourceToGraph('dataAttribute', item)">Add</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapse collapse-arrow bg-base-100" :class="{ 'collapse-open': sections.ontologies }">
+                    <input type="checkbox" v-model="sections.ontologies" />
+                    <div class="collapse-title font-semibold text-sm">Ontologies</div>
+                    <div class="collapse-content space-y-2">
+                        <input v-model="search.ontologies" class="input input-sm input-bordered w-full" placeholder="Search by name/code" />
+                        <div class="h-64 overflow-auto space-y-1 pr-1">
+                            <div
+                                v-for="item in flattenedOntologyTree"
+                                :key="'tree-'+item.code"
+                                class="flex items-center justify-between gap-2 px-2 py-1 rounded hover:bg-base-200"
+                            >
+                                <div class="flex items-center gap-1 min-w-0 flex-1" :style="{ marginLeft: `${item.depth * 14}px` }">
+                                    <span class="text-xs opacity-50 shrink-0">{{ item.depth > 0 ? "└" : "•" }}</span>
+                                    <button class="text-left flex-1 truncate" @click="openDetailModal('ontology', item)">
+                                        <span class="font-semibold">{{ item.name }}</span>
+                                        <span class="text-xs opacity-60 ml-1">{{ item.code }}</span>
+                                    </button>
+                                </div>
+                                <button class="btn btn-xs btn-primary shrink-0" @click.stop="addResourceToGraph('ontology', item)">Add</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <section class="flex-1 cy-container">
+            <div id="cy"></div>
+            <div ref="tooltip" class="tooltip tooltip-open tooltip-right tooltip-box hidden">
+                <div class="tooltip-content bg-base-300 text-base-content rounded px-2 py-1 text-xs"></div>
+            </div>
+        </section>
+    </div>
+
+    <dialog class="modal" :class="{ 'modal-open': detailModal.open }">
+        <div class="modal-box max-w-3xl">
+            <h3 class="font-bold text-lg">{{ detailModal.title }}</h3>
+            <p class="text-xs opacity-60 mb-3">{{ detailModal.code }}</p>
+            <div v-if="detailModal.loading" class="py-8 text-center"><span class="loading loading-spinner loading-md"></span></div>
+            <div v-else class="space-y-3">
+                <div class="p-3 rounded bg-base-200 overflow-auto text-sm">
+                    <pre>{{ prettyDetail }}</pre>
+                </div>
+                <div class="modal-action">
+                    <button class="btn btn-primary" @click="addFromModal">Add to Graph</button>
+                    <button class="btn" @click="closeDetailModal">Close</button>
+                </div>
+            </div>
+        </div>
+    </dialog>
+</div>
+
+<script>
+const { createApp, ref, reactive, computed, onMounted } = Vue;
+
+createApp({
+    setup() {
+        const theme = ref(localStorage.getItem("uiTheme") || "light");
+        const isDarkTheme = computed(() => theme.value === "dark");
+        const config = reactive({
+            tenantId: localStorage.getItem("tenantId") || "tenant-a",
+            token: localStorage.getItem("token") || "test-token",
+        });
+
+        const sections = reactive({ dataAttributes: true, ontologies: true });
+        const search = reactive({ dataAttributes: "", ontologies: "" });
+        const dataAttributes = ref([]);
+        const ontologies = ref([]);
+        const detailModal = reactive({ open: false, loading: false, type: "", title: "", code: "", basic: null, detail: null });
+
+        const requestCache = new Map();
+        const detailCache = new Map();
+        const ontologyRelatedCache = new Map();
+        const attributeOntologyCache = new Map();
+
+        let cy = null;
+        const graphNodes = new Map();
+        const graphEdges = new Map();
+        const tooltip = ref(null);
+        let tapState = { id: "", ts: 0 };
+        let tapTimer = null;
+
+        const nodeConfig = {
+            ontology: { shape: "rectangle", color: "#9ca3af", width: 180, height: 62 },
+            dataAttribute: { shape: "ellipse", color: "#fb923c", width: 130, height: 130 },
+            objectProperty: { shape: "rectangle", color: "#6366f1", width: 120, height: 120 },
+            capability: { shape: "rectangle", color: "#fda4af", width: 120, height: 120 },
+        };
+
+        const prettyDetail = computed(() => JSON.stringify(detailModal.detail || {}, null, 2));
+
+        const filteredDataAttributes = computed(() => {
+            const q = (search.dataAttributes || "").trim().toLowerCase();
+            if (!q) return dataAttributes.value;
+            return dataAttributes.value.filter(item => (item.name || "").toLowerCase().includes(q) || (item.code || "").toLowerCase().includes(q));
+        });
+
+        const ontologyTree = computed(() => {
+            const byCode = new Map();
+            const roots = [];
+            for (const item of ontologies.value) byCode.set(item.code, { ...item, children: [] });
+            for (const item of ontologies.value) {
+                const node = byCode.get(item.code);
+                if (!node) continue;
+                const parent = item.parentCode ? byCode.get(item.parentCode) : null;
+                if (parent && parent.code !== node.code) parent.children.push(node);
+                else roots.push(node);
+            }
+            const sorter = (a, b) => (a.name || "").localeCompare(b.name || "");
+            const sortTree = (node) => {
+                node.children.sort(sorter);
+                node.children.forEach(sortTree);
+            };
+            roots.sort(sorter);
+            roots.forEach(sortTree);
+            return roots;
+        });
+
+        const filteredOntologyTree = computed(() => {
+            const q = (search.ontologies || "").trim().toLowerCase();
+            if (!q) return ontologyTree.value;
+            const filterNode = (node) => {
+                const children = node.children.map(filterNode).filter(Boolean);
+                const hit = (node.name || "").toLowerCase().includes(q) || (node.code || "").toLowerCase().includes(q);
+                if (!hit && children.length === 0) return null;
+                return { ...node, children };
+            };
+            return ontologyTree.value.map(filterNode).filter(Boolean);
+        });
+
+        const flattenedOntologyTree = computed(() => {
+            const output = [];
+            const walk = (nodes, depth) => {
+                for (const node of nodes || []) {
+                    output.push({ ...node, depth });
+                    walk(node.children || [], depth + 1);
+                }
+            };
+            walk(filteredOntologyTree.value, 0);
+            return output;
+        });
+
+        const applyTheme = (nextTheme) => {
+            theme.value = nextTheme === "dark" ? "dark" : "light";
+            document.documentElement.setAttribute("data-theme", theme.value);
+            localStorage.setItem("uiTheme", theme.value);
+        };
+        const toggleTheme = () => applyTheme(theme.value === "dark" ? "light" : "dark");
+
+        const mcpCall = async (toolName, argumentsObj = {}) => {
+            const key = `${toolName}:${JSON.stringify(argumentsObj)}`;
+            if (requestCache.has(key)) return requestCache.get(key);
+            const task = fetch("/api/v1/mcp/graph/tools:call", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Tenant-Id": config.tenantId,
+                    "Authorization": `Bearer ${config.token}`,
+                },
+                body: JSON.stringify({ name: toolName, arguments: argumentsObj }),
+            }).then(async (res) => {
+                const payload = await res.json();
+                if (!res.ok || payload.code !== 0) {
+                    throw new Error(payload.message || `request failed: ${toolName}`);
+                }
+                const content = (((payload.data || {}).content || [])[0] || {});
+                return content.json || [];
+            }).catch((err) => {
+                requestCache.delete(key);
+                throw err;
+            });
+            requestCache.set(key, task);
+            return task;
+        };
+
+        const reloadResources = async () => {
+            requestCache.clear();
+            const [attrs, classes] = await Promise.all([
+                mcpCall("graph.list_data_attributes", {}),
+                mcpCall("graph.list_ontologies", {}),
+            ]);
+            dataAttributes.value = attrs || [];
+            ontologies.value = classes || [];
+        };
+
+        const initGraph = () => {
+            cy = cytoscape({
+                container: document.getElementById("cy"),
+                elements: [],
+                wheelSensitivity: 0.18,
+                style: [
+                    {
+                        selector: "node",
+                        style: {
+                            "background-color": "data(color)",
+                            "shape": "data(shape)",
+                            "label": "data(label)",
+                            "width": "data(width)",
+                            "height": "data(height)",
+                            "font-size": 11,
+                            "text-wrap": "wrap",
+                            "text-max-width": 140,
+                            "text-valign": "center",
+                            "text-halign": "center",
+                            "font-family": "Segoe UI, PingFang SC, sans-serif",
+                            "font-weight": 700,
+                            "color": "#0f172a",
+                            "border-width": 2,
+                            "border-color": "#334155",
+                            "shadow-blur": 12,
+                            "shadow-color": "rgba(15, 23, 42, 0.25)",
+                            "shadow-opacity": 0.35,
+                            "text-background-color": "rgba(255,255,255,0.6)",
+                            "text-background-opacity": 1,
+                            "text-background-padding": 2,
+                        },
+                    },
+                    {
+                        selector: "edge",
+                        style: {
+                            "curve-style": "bezier",
+                            "line-color": "data(color)",
+                            "line-style": "data(lineStyle)",
+                            "width": 1.6,
+                            "target-arrow-shape": "triangle",
+                            "target-arrow-color": "data(color)",
+                            "arrow-scale": 0.9,
+                            "label": "data(label)",
+                            "font-size": 9,
+                            "font-weight": 700,
+                            "text-background-color": "rgba(248,250,252,0.92)",
+                            "text-background-opacity": 1,
+                            "text-background-padding": 2,
+                            "text-margin-y": -8,
+                            "color": "#1e293b",
+                        },
+                    },
+                ],
+                layout: { name: "cose", animate: false, fit: true, padding: 30 },
+            });
+
+            cy.on("tap", "node", (evt) => {
+                const node = evt.target;
+                const code = node.data("code");
+                const type = node.data("type");
+                const now = Date.now();
+                const isDouble = tapState.id === code && now - tapState.ts < 280;
+                if (isDouble) {
+                    if (tapTimer) {
+                        clearTimeout(tapTimer);
+                        tapTimer = null;
+                    }
+                    tapState = { id: "", ts: 0 };
+                    onNodeDoubleClick(code, type);
+                    return;
+                }
+                tapState = { id: code, ts: now };
+                if (tapTimer) clearTimeout(tapTimer);
+                tapTimer = setTimeout(() => {
+                    openDetailModal(type, graphNodes.get(code) || { code, name: code });
+                    tapTimer = null;
+                }, 280);
+            });
+
+            cy.on("mouseover", "node", (evt) => {
+                const item = graphNodes.get(evt.target.data("code"));
+                const desc = (item && item.description) || "";
+                if (!desc || !tooltip.value) return;
+                const pos = evt.renderedPosition || { x: 0, y: 0 };
+                tooltip.value.classList.remove("hidden");
+                tooltip.value.style.left = `${Math.min(pos.x + 18, window.innerWidth - 380)}px`;
+                tooltip.value.style.top = `${Math.max(pos.y - 8, 80)}px`;
+                const content = tooltip.value.querySelector(".tooltip-content");
+                if (content) content.textContent = desc;
+            });
+            cy.on("mouseout", "node", () => {
+                if (tooltip.value) tooltip.value.classList.add("hidden");
+            });
+        };
+
+        const edgePairKey = (a, b) => `${a}->${b}`;
+        const edgeStyleByRelation = (sourceCode, targetCode, relationType = "") => {
+            if (relationType === "inheritance") return { color: "#9ca3af", lineStyle: "dashed" };
+            if (relationType === "inherited") {
+                const sourceType = graphNodes.get(sourceCode)?.type;
+                const targetType = graphNodes.get(targetCode)?.type;
+                const pair = new Set([sourceType, targetType]);
+                if (pair.has("ontology") && pair.has("dataAttribute")) return { color: "#fb923c", lineStyle: "dashed" };
+                if (pair.has("ontology") && pair.has("objectProperty")) return { color: "#6366f1", lineStyle: "dashed" };
+                if (pair.has("ontology") && pair.has("capability")) return { color: "#fda4af", lineStyle: "dashed" };
+                return { color: "#94a3b8", lineStyle: "dashed" };
+            }
+            const sourceType = graphNodes.get(sourceCode)?.type;
+            const targetType = graphNodes.get(targetCode)?.type;
+            const pair = new Set([sourceType, targetType]);
+            if (pair.has("ontology") && pair.has("dataAttribute")) return { color: "#fb923c", lineStyle: "solid" };
+            if (pair.has("ontology") && pair.has("objectProperty")) return { color: "#6366f1", lineStyle: "solid" };
+            if (pair.has("ontology") && pair.has("capability")) return { color: "#fda4af", lineStyle: "solid" };
+            return { color: "#94a3b8", lineStyle: "solid" };
+        };
+        const mergeLabels = (existing, incoming) => {
+            const all = new Set();
+            for (const part of String(existing || "").split("|").map(s => s.trim()).filter(Boolean)) all.add(part);
+            for (const part of String(incoming || "").split("|").map(s => s.trim()).filter(Boolean)) all.add(part);
+            return Array.from(all).join(" | ");
+        };
+        const addEdge = (sourceCode, targetCode, label = "", relationType = "") => {
+            if (!graphNodes.has(sourceCode) || !graphNodes.has(targetCode)) return false;
+            const key = edgePairKey(sourceCode, targetCode);
+            const style = edgeStyleByRelation(sourceCode, targetCode, relationType);
+            if (graphEdges.has(key)) {
+                const existing = graphEdges.get(key);
+                const mergedLabel = mergeLabels(existing.label, label);
+                const colorChanged = existing.color !== style.color || existing.lineStyle !== style.lineStyle;
+                if (mergedLabel !== (existing.label || "") || colorChanged) {
+                    existing.label = mergedLabel;
+                    existing.color = style.color;
+                    existing.lineStyle = style.lineStyle;
+                    const edge = cy.getElementById(existing.id);
+                    if (edge && edge.length > 0) {
+                        edge.data("label", mergedLabel);
+                        edge.data("color", style.color);
+                        edge.data("lineStyle", style.lineStyle);
+                    }
+                    return true;
+                }
+                return false;
+            }
+            const id = `edge_${graphEdges.size + 1}_${Date.now()}`;
+            graphEdges.set(key, {
+                id,
+                source: sourceCode,
+                target: targetCode,
+                label: String(label || ""),
+                color: style.color,
+                lineStyle: style.lineStyle,
+            });
+            cy.add({
+                group: "edges",
+                data: {
+                    id,
+                    source: sourceCode,
+                    target: targetCode,
+                    label: String(label || ""),
+                    color: style.color,
+                    lineStyle: style.lineStyle,
+                },
+            });
+            return true;
+        };
+
+        const addNode = (type, item) => {
+            const code = item.code;
+            if (!code || graphNodes.has(code)) return false;
+            const cfg = nodeConfig[type];
+            if (!cfg) return false;
+            graphNodes.set(code, { ...item, type });
+            cy.add({
+                group: "nodes",
+                data: {
+                    id: code,
+                    type,
+                    code,
+                    name: item.name || code,
+                    description: item.description || "",
+                    label: `${item.name || code}\n${code}`,
+                    color: cfg.color,
+                    shape: cfg.shape,
+                    width: cfg.width,
+                    height: cfg.height,
+                },
+            });
+            return true;
+        };
+
+        const runLayout = () => {
+            cy.layout({ name: "cose", animate: true, animationDuration: 260, fit: true, padding: 35 }).run();
+        };
+
+        const ensureAttributeRelations = async (attributeCode) => {
+            if (attributeOntologyCache.has(attributeCode)) return attributeOntologyCache.get(attributeCode);
+            const rows = await mcpCall("graph.get_data_attribute_related_ontologies", { attributeCodes: [attributeCode] });
+            const item = (rows || [])[0] || { ontologies: [] };
+            attributeOntologyCache.set(attributeCode, item.ontologies || []);
+            return item.ontologies || [];
+        };
+
+        const ensureOntologyRelated = async (ontologyCode) => {
+            if (ontologyRelatedCache.has(ontologyCode)) return ontologyRelatedCache.get(ontologyCode);
+            const rows = await mcpCall("graph.get_ontology_related_resources", { ontologyCodes: [ontologyCode] });
+            const item = (rows || [])[0] || { dataAttributes: [], objectProperties: [], capabilities: [] };
+            ontologyRelatedCache.set(ontologyCode, item);
+            return item;
+        };
+
+        const connectOntologyHierarchyFor = (ontologyCode) => {
+            const current = ontologies.value.find(item => item.code === ontologyCode);
+            if (!current) return;
+            if (current.parentCode && graphNodes.has(current.parentCode)) {
+                addEdge(current.parentCode, ontologyCode, "", "inheritance");
+            }
+            for (const item of ontologies.value) {
+                if (item.parentCode === ontologyCode && graphNodes.has(item.code)) {
+                    addEdge(ontologyCode, item.code, "", "inheritance");
+                }
+            }
+        };
+
+        const connectByExistingRules = async (type, code) => {
+            if (type === "dataAttribute") {
+                const ontologiesForAttr = await ensureAttributeRelations(code);
+                for (const ontology of ontologiesForAttr) {
+                    if (graphNodes.has(ontology.code)) addEdge(ontology.code, code);
+                }
+            }
+            if (type === "ontology") {
+                const related = await ensureOntologyRelated(code);
+                connectOntologyHierarchyFor(code);
+                for (const attr of related.dataAttributes || []) {
+                    const existingAttrs = attributeOntologyCache.get(attr.code) || [];
+                    if (!existingAttrs.some(item => item.code === code)) {
+                        attributeOntologyCache.set(attr.code, [...existingAttrs, related.ontology].filter(Boolean));
+                    }
+                    if (graphNodes.has(attr.code)) {
+                        const inherited = attr.bindingSource === "inherited";
+                        const sourceLabel = inherited ? "inherited" : "self";
+                        addEdge(code, attr.code, sourceLabel, inherited ? "inherited" : "");
+                    }
+                }
+                for (const obj of related.objectProperties || []) {
+                    if (graphNodes.has(obj.code)) {
+                        const inherited = obj.bindingSource === "inherited";
+                        const sourceLabel = inherited ? "inherited" : "self";
+                        const roles = obj.roles || [];
+                        if (roles.includes("domain")) addEdge(code, obj.code, `${sourceLabel} | domain`, inherited ? "inherited" : "");
+                        if (roles.includes("range")) addEdge(obj.code, code, `${sourceLabel} | range`, inherited ? "inherited" : "");
+                    }
+                }
+                for (const cap of related.capabilities || []) {
+                    if (graphNodes.has(cap.code)) {
+                        const inherited = cap.bindingSource === "inherited";
+                        const sourceLabel = inherited ? "inherited" : "self";
+                        addEdge(code, cap.code, sourceLabel, inherited ? "inherited" : "");
+                    }
+                }
+            }
+        };
+
+        const addResourceToGraph = async (type, item) => {
+            const added = addNode(type, item);
+            await connectByExistingRules(type, item.code);
+            if (added) runLayout();
+        };
+
+        const fetchDetailByType = async (type, code) => {
+            const cacheKey = `${type}:${code}`;
+            if (detailCache.has(cacheKey)) return detailCache.get(cacheKey);
+            let data = null;
+            if (type === "ontology") data = (await mcpCall("graph.get_ontology_details", { ontologyCodes: [code] }))[0] || null;
+            if (type === "dataAttribute") data = (await mcpCall("graph.get_data_attribute_details", { attributeCodes: [code] }))[0] || null;
+            if (type === "objectProperty") data = (await mcpCall("graph.get_object_property_details", { objectPropertyCodes: [code] }))[0] || null;
+            if (type === "capability") data = (await mcpCall("graph.get_capability_details", { capabilityCodes: [code] }))[0] || null;
+            detailCache.set(cacheKey, data);
+            return data;
+        };
+
+        const openDetailModal = async (type, item) => {
+            detailModal.open = true;
+            detailModal.loading = true;
+            detailModal.type = type;
+            detailModal.basic = item;
+            detailModal.title = `${item.name || item.code} (${type})`;
+            detailModal.code = item.code || "";
+            try {
+                detailModal.detail = await fetchDetailByType(type, item.code);
+            } finally {
+                detailModal.loading = false;
+            }
+        };
+
+        const closeDetailModal = () => {
+            detailModal.open = false;
+            detailModal.loading = false;
+            detailModal.type = "";
+            detailModal.title = "";
+            detailModal.code = "";
+            detailModal.basic = null;
+            detailModal.detail = null;
+        };
+
+        const addFromModal = async () => {
+            if (!detailModal.basic || !detailModal.type) return;
+            await addResourceToGraph(detailModal.type, detailModal.basic);
+        };
+
+        const onNodeDoubleClick = async (code, type) => {
+            if (type === "dataAttribute") {
+                const ontologiesForAttr = await ensureAttributeRelations(code);
+                let changed = false;
+                for (const ontology of ontologiesForAttr) {
+                    changed = addNode("ontology", ontology) || changed;
+                    changed = addEdge(ontology.code, code) || changed;
+                }
+                if (changed) runLayout();
+                return;
+            }
+
+            if (type === "ontology") {
+                const related = await ensureOntologyRelated(code);
+                let changed = false;
+                for (const parent of related.parentOntologies || []) {
+                    changed = addNode("ontology", parent) || changed;
+                    changed = addEdge(parent.code, code, "", "inheritance") || changed;
+                }
+                for (const child of related.childOntologies || []) {
+                    changed = addNode("ontology", child) || changed;
+                    changed = addEdge(code, child.code, "", "inheritance") || changed;
+                }
+                for (const attr of related.dataAttributes || []) {
+                    changed = addNode("dataAttribute", attr) || changed;
+                    const inherited = attr.bindingSource === "inherited";
+                    const sourceLabel = inherited ? "inherited" : "self";
+                    changed = addEdge(code, attr.code, sourceLabel, inherited ? "inherited" : "") || changed;
+                }
+                for (const obj of related.objectProperties || []) {
+                    changed = addNode("objectProperty", obj) || changed;
+                    const inherited = obj.bindingSource === "inherited";
+                    const sourceLabel = inherited ? "inherited" : "self";
+                    const roles = obj.roles || [];
+                    if (roles.includes("domain")) changed = addEdge(code, obj.code, `${sourceLabel} | domain`, inherited ? "inherited" : "") || changed;
+                    if (roles.includes("range")) changed = addEdge(obj.code, code, `${sourceLabel} | range`, inherited ? "inherited" : "") || changed;
+                }
+                for (const cap of related.capabilities || []) {
+                    changed = addNode("capability", cap) || changed;
+                    const inherited = cap.bindingSource === "inherited";
+                    const sourceLabel = inherited ? "inherited" : "self";
+                    changed = addEdge(code, cap.code, sourceLabel, inherited ? "inherited" : "") || changed;
+                }
+                connectOntologyHierarchyFor(code);
+                if (changed) runLayout();
+                return;
+            }
+
+            if (type === "objectProperty") {
+                const detail = await fetchDetailByType("objectProperty", code);
+                const domains = Array.isArray(detail?.domain) ? detail.domain : [];
+                const ranges = Array.isArray(detail?.range) ? detail.range : [];
+                let changed = false;
+                for (const domain of domains) {
+                    changed = addNode("ontology", domain) || changed;
+                    changed = addEdge(domain.code, code, "domain") || changed;
+                }
+                for (const range of ranges) {
+                    changed = addNode("ontology", range) || changed;
+                    changed = addEdge(code, range.code, "range") || changed;
+                }
+                if (changed) runLayout();
+                return;
+            }
+
+            if (type === "capability") {
+                const detail = await fetchDetailByType("capability", code);
+                let changed = false;
+                for (const group of detail?.domain || []) {
+                    for (const ontology of group.ontologies || []) {
+                        changed = addNode("ontology", ontology) || changed;
+                        changed = addEdge(ontology.code, code, group.groupName || "group") || changed;
+                    }
+                }
+                if (changed) runLayout();
+            }
+        };
+
+        const fitGraph = () => {
+            if (!cy) return;
+            cy.fit(undefined, 40);
+        };
+
+        const clearGraph = () => {
+            graphNodes.clear();
+            graphEdges.clear();
+            if (cy) cy.elements().remove();
+        };
+
+        onMounted(async () => {
+            applyTheme(theme.value);
+            initGraph();
+            await reloadResources();
+        });
+
+        return {
+            config,
+            sections,
+            search,
+            dataAttributes,
+            ontologies,
+            detailModal,
+            tooltip,
+            prettyDetail,
+            filteredDataAttributes,
+            filteredOntologyTree,
+            flattenedOntologyTree,
+            isDarkTheme,
+            toggleTheme,
+            reloadResources,
+            openDetailModal,
+            closeDetailModal,
+            addFromModal,
+            addResourceToGraph,
+            fitGraph,
+            clearGraph,
+        };
+    },
+}).mount("#app");
+</script>
+</body>
+</html>

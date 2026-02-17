@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     app_name: str = "Project_TheWorld M1"
     api_prefix: str = "/api/v1"
     database_url: str = "postgresql+psycopg://akyuu:akyuu@192.168.1.6:5432/gensokyo"
+    entity_database_url: str | None = None
+    entity_database_name: str = "memento"
     redis_url: str = "redis://:akyuu@192.168.1.6:6379/0"
     auth_enabled: bool = True
 

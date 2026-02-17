@@ -1,0 +1,27 @@
+[2026-02-18 00:16:38] INFO:     127.0.0.1:7176 - "GET /graph-workspace HTTP/1.1" 200 OK
+[2026-02-18 00:16:38] INFO:     127.0.0.1:7176 - "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 Not Found
+[2026-02-18 00:16:38] INFO:     127.0.0.1:1693 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-18 00:16:38] INFO:     127.0.0.1:7176 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-18 00:16:42] INFO:     127.0.0.1:7176 - "GET /m1/console HTTP/1.1" 200 OK
+[2026-02-18 00:16:43] INFO:     127.0.0.1:1693 - "GET /api/v1/ontology/data-attributes HTTP/1.1" 200 OK
+[2026-02-18 00:16:43] INFO:     127.0.0.1:7176 - "GET /api/v1/ontology/tree HTTP/1.1" 200 OK
+[2026-02-18 00:16:43] INFO:     127.0.0.1:7563 - "GET /api/v1/ontology/capabilities HTTP/1.1" 200 OK
+[2026-02-18 00:16:43] INFO:     127.0.0.1:10482 - "GET /api/v1/ontology/object-properties HTTP/1.1" 200 OK
+[2026-02-18 00:16:45] INFO:     127.0.0.1:10482 - "GET /api/v1/ontology/classes/14 HTTP/1.1" 200 OK
+[2026-02-18 00:16:57] INFO:     127.0.0.1:2438 - "GET /graph-workspace HTTP/1.1" 200 OK
+[2026-02-18 00:16:57] INFO:     127.0.0.1:2438 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-18 00:16:57] INFO:     127.0.0.1:7818 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-18 00:17:02] INFO:     127.0.0.1:7818 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-18 00:17:15] INFO:     127.0.0.1:12745 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-18 00:17:24] INFO:     127.0.0.1:6996 - "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 Not Found
+[2026-02-18 00:17:26] INFO:     127.0.0.1:6996 - "GET /graph-workspace HTTP/1.1" 200 OK
+[2026-02-18 00:17:26] INFO:     127.0.0.1:6996 - "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 Not Found
+[2026-02-18 00:17:26] INFO:     127.0.0.1:6996 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-18 00:17:26] INFO:     127.0.0.1:3061 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-18 00:17:29] INFO:     127.0.0.1:3061 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-18 00:20:38] INFO:     127.0.0.1:9409 - "GET /graph-workspace HTTP/1.1" 200 OK
+[2026-02-18 00:20:38] INFO:     127.0.0.1:9409 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-18 00:20:38] INFO:     127.0.0.1:10520 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-18 00:20:40] INFO:     127.0.0.1:10520 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-18 00:20:59] INFO:     127.0.0.1:3464 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-18 00:27:15] INFO:     127.0.0.1:8573 - "GET /graph-workspace HTTP/1.1" 200 OK

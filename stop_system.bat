@@ -3,35 +3,33 @@ setlocal
 cd /d "%~dp0"
 
 if not exist ".runtime\uvicorn.pid" (
-  echo [WARN] PID file not found: .runtime\uvicorn.pid
-  echo [WARN] Service may already be stopped.
-  echo.
-  echo Press any key to exit...
-  pause >nul
+  call :log WARN "PID file not found: .runtime\uvicorn.pid"
+  call :log WARN "Service may already be stopped."
   endlocal
   exit /b 0
 )
 
 set /p UVICORN_PID=<".runtime\uvicorn.pid"
 if "%UVICORN_PID%"=="" (
-  echo [ERROR] PID file is empty.
-  echo.
-  echo Press any key to exit...
-  pause >nul
+  call :log WARN "PID file is empty. Cleaning stale pid file."
+  del /f /q ".runtime\uvicorn.pid" >nul 2>&1
   endlocal
-  exit /b 1
+  exit /b 0
 )
 
 taskkill /PID %UVICORN_PID% /T /F >nul 2>&1
 if errorlevel 1 (
-  echo [WARN] Failed to kill PID %UVICORN_PID%. Process may not exist.
+  call :log WARN "Failed to kill PID %UVICORN_PID%. Process may not exist."
 ) else (
-  echo [OK] Service stopped. PID=%UVICORN_PID%
+  call :log OK "Service stopped. PID=%UVICORN_PID%"
 )
 
 del /f /q ".runtime\uvicorn.pid" >nul 2>&1
 
-echo.
-echo Press any key to exit...
-pause >nul
 endlocal
+exit /b 0
+
+:log
+for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-Date -Format \"yyyy-MM-dd HH:mm:ss\""') do set "NOW=%%I"
+echo [%NOW%] [%~1] %~2
+exit /b 0

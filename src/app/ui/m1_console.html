@@ -1,249 +1,1244 @@
-<!doctype html>
-<html lang="zh-CN">
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Project_TheWorld 管理台</title>
-  <style>
-    :root { --bg:#f2f4f8; --card:#fff; --border:#d8dde6; --text:#1b2430; --muted:#5e6878; --primary:#0f6fe7; }
-    body { margin:0; font-family:"Segoe UI","PingFang SC",sans-serif; background:var(--bg); color:var(--text); }
-    .wrap { max-width:1320px; margin:18px auto; padding:0 12px 20px; }
-    .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:10px; }
-    .tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
-    .tab { border:1px solid var(--border); background:#fff; color:var(--text); border-radius:8px; padding:8px 10px; cursor:pointer; }
-    .tab.active { background:var(--primary); color:#fff; border-color:var(--primary); }
-    .page { display:none; }
-    .page.active { display:block; }
-    .row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
-    input, textarea, select { flex:1; min-width:160px; border:1px solid var(--border); border-radius:6px; padding:8px; box-sizing:border-box; }
-    textarea { min-height:96px; resize:vertical; }
-    .lg { min-height:220px; }
-    button { border:0; border-radius:6px; padding:8px 12px; background:var(--primary); color:#fff; cursor:pointer; }
-    .secondary { background:#536074; }
-    .title { font-size:15px; font-weight:700; margin-bottom:8px; }
-    .mono { font-family:Consolas,"Courier New",monospace; white-space:pre-wrap; font-size:12px; color:var(--muted); }
-    .md { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px; }
-    .md-preview { border:1px solid var(--border); border-radius:6px; padding:8px; background:#fcfdff; min-height:220px; overflow:auto; }
-    .muted { font-size:12px; color:var(--muted); }
-    @media (max-width: 900px) { .md { grid-template-columns:1fr; } }
-  </style>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TheWorld 本体管理台 | Ontology IDE</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    <link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" />
+    <link id="hljs-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" disabled />
+    <style>
+        [v-cloak] { display: none; }
+        .md-content h1 { font-size: 1.25rem; font-weight: bold; margin-top: 0.5rem; }
+        .md-content h2 { font-size: 1.1rem; font-weight: bold; margin-top: 0.4rem; }
+        .md-content p { margin-bottom: 0.4rem; font-size: 0.9rem; }
+        .md-content ul { list-style-type: disc; margin-left: 1.2rem; font-size: 0.9rem; }
+        .tree-node { margin-left: 1rem; border-left: 1px solid #e5e7eb; padding-left: 0.5rem; }
+        .active-item { background-color: oklch(var(--p) / 0.1); border-right: 3px solid oklch(var(--p)); }
+        .app-container { height: 100vh; overflow: hidden; }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .section-card { border: 1px solid #e2e8f0; border-radius: 0.5rem; background: white; margin-bottom: 1.5rem; }
+        .section-header { padding: 0.75rem 1rem; border-bottom: 1px solid #e2e8f0; font-weight: bold; font-size: 0.875rem; color: #475569; display: flex; align-items: center; justify-content: space-between; }
+        .section-body { padding: 1rem; }
+        [data-theme="dark"] .tree-node { border-left-color: #334155; }
+        [data-theme="dark"] ::-webkit-scrollbar-thumb { background: #475569; }
+        [data-theme="dark"] .section-card { border-color: #334155; background: #0f172a; }
+        [data-theme="dark"] .section-header { border-bottom-color: #334155; color: #cbd5e1; }
+        [data-theme="dark"] .bg-white { background-color: #111827 !important; }
+        [data-theme="dark"] .bg-slate-50 { background-color: #0f172a !important; }
+        [data-theme="dark"] .bg-slate-100\/50 { background-color: rgba(30, 41, 59, 0.45) !important; }
+        [data-theme="dark"] .text-gray-500 { color: #94a3b8 !important; }
+        [data-theme="dark"] .text-gray-400 { color: #94a3b8 !important; }
+        [data-theme="dark"] .md-content { color: #e2e8f0; }
+    </style>
 </head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      <div class="title">Project_TheWorld 新版本体管理台</div>
-      <div class="row">
-        <input id="tenantId" value="tenant-a" placeholder="X-Tenant-Id" />
-        <input id="token" value="test-token" placeholder="Bearer Token (不含前缀)" />
-      </div>
-      <div class="mono">仅使用新接口：本体绑定数据属性；对象属性仅 domain/range 绑定；能力创建不含 class_ids。</div>
+<body class="bg-base-100 text-base-content antialiased">
+    <div id="app" v-cloak class="app-container flex flex-col">
+        <!-- Top Nav / Header -->
+        <header class="h-12 border-b flex items-center justify-between px-4 bg-base-100 z-30 shadow-sm shrink-0">
+            <div class="flex items-center gap-4">
+                <span class="font-bold text-lg flex items-center gap-2">
+                    <i class="fas fa-microchip text-primary"></i> TheWorld <span class="text-xs opacity-50 font-mono">IDE</span>
+                </span>
+                <div class="divider divider-horizontal m-0"></div>
+                <div class="flex gap-2">
+                    <input v-model="config.tenantId" class="input input-xs input-bordered w-32" placeholder="Tenant ID" />
+                    <input v-model="config.token" type="password" class="input input-xs input-bordered w-32" placeholder="Token" />
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button @click="toggleTheme" class="btn btn-xs btn-ghost" :title="isDarkTheme ? '切换到亮色' : '切换到暗色'">
+                    <i :class="['fas', isDarkTheme ? 'fa-sun' : 'fa-moon']"></i>
+                </button>
+                <button @click="openGraphWorkspace" class="btn btn-xs btn-outline">Graph</button>
+                <button @click="owlValidate" class="btn btn-xs btn-outline btn-accent">Validate OWL</button>
+                <button @click="owlExport" class="btn btn-xs btn-ghost text-gray-500"><i class="fas fa-download"></i></button>
+            </div>
+        </header>
+
+        <div class="flex flex-1 overflow-hidden">
+            <!-- Sidebar Tabs -->
+            <aside class="w-12 border-r bg-base-200 flex flex-col items-center py-4 gap-4 z-20 shrink-0">
+                <button v-for="t in tabs" :key="t.id" @click="changeTab(t.id)" 
+                    :class="['p-2 rounded-lg transition-all', activeTab === t.id ? 'bg-primary text-primary-content shadow-md' : 'hover:bg-base-300 text-gray-500']"
+                    :title="t.name">
+                    <i :class="['fas', t.icon]"></i>
+                </button>
+                <div class="mt-auto pb-4">
+                    <button @click="showLogs = !showLogs" :class="['p-2 rounded-lg', showLogs ? 'text-primary' : 'text-gray-400']">
+                        <i class="fas fa-terminal"></i>
+                    </button>
+                </div>
+            </aside>
+
+            <!-- Navigation Panel (List/Tree) -->
+            <section class="w-80 border-r flex flex-col bg-base-50 overflow-hidden shrink-0">
+                <div class="p-3 border-b space-y-2 shrink-0">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-bold opacity-70 uppercase tracking-wider">{{ currentTabName }}</span>
+                        <button @click="openCreateModal()" class="btn btn-xs btn-circle btn-primary"><i class="fas fa-plus"></i></button>
+                    </div>
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-2 top-2.5 text-gray-400 text-xs"></i>
+                        <input v-model="searchQuery" class="input input-xs input-bordered w-full pl-7" placeholder="Search..." />
+                    </div>
+                </div>
+
+                <div class="flex-1 overflow-auto p-1 py-2">
+                    <!-- Ontology Tree -->
+                    <div v-if="activeTab === 'ontology'">
+                        <div v-for="node in filteredTree" :key="node.id">
+                            <tree-item :node="node" :active-id="selectedId" @select="selectItem" @add-child="openCreateModal"></tree-item>
+                        </div>
+                    </div>
+                    <!-- Other Lists -->
+                    <div v-else class="space-y-0.5">
+                        <div v-for="item in filteredList" :key="item.id" 
+                            @click="selectItem(item)"
+                            :class="['px-3 py-2 cursor-pointer rounded flex items-center justify-between group transition-colors', selectedId === item.id ? 'active-item' : 'hover:bg-base-200']">
+                            <div class="flex flex-col">
+                                <span class="text-sm font-medium">{{ item.name }}</span>
+                                <span class="text-[10px] font-mono text-gray-500">{{ item.code }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Main Workspace (Detail Panel) -->
+            <section class="flex-1 flex flex-col bg-slate-50 overflow-hidden relative">
+                <div v-if="selectedItem" class="flex-1 flex flex-col overflow-hidden">
+                    <!-- Detail Header -->
+                    <div class="h-12 border-b flex items-center justify-between px-6 bg-white shrink-0 shadow-sm z-10">
+                        <div class="flex items-center gap-3">
+                            <i :class="['fas', currentTabIcon, 'text-primary opacity-50']"></i>
+                            <h2 class="font-bold">{{ selectedItem.name }}</h2>
+                            <span class="badge badge-sm badge-ghost font-mono">#{{ selectedId }}</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <button @click="saveChanges" class="btn btn-xs btn-primary" :disabled="loading">Save Changes</button>
+                            <button @click="deleteSelected" class="btn btn-xs btn-error" :disabled="loading">Delete</button>
+                            <button @click="selectedItem = null; selectedId = null" class="btn btn-xs btn-ghost text-gray-400"><i class="fas fa-times"></i></button>
+                        </div>
+                    </div>
+
+                    <div class="flex-1 overflow-auto p-6">
+                        <div class="max-w-4xl mx-auto space-y-4">
+                            <!-- Basic Info Card -->
+                            <div class="section-card">
+                                <div class="section-header"><span><i class="fas fa-info-circle mr-2"></i>Basic Information</span></div>
+                                <div class="section-body space-y-4">
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div class="form-control">
+                                            <label class="label"><span class="label-text font-bold">Display Name</span></label>
+                                            <input v-model="editForm.name" class="input input-bordered w-full" />
+                                        </div>
+                                        <div class="form-control">
+                                            <label class="label"><span class="label-text font-bold">Code</span></label>
+                                            <input :value="selectedItem.code" class="input input-bordered w-full bg-base-200" disabled />
+                                        </div>
+                                    </div>
+                                    <div v-if="activeTab === 'data-attr'" class="form-control">
+                                        <label class="label"><span class="label-text font-bold">Data Type</span></label>
+                                        <select v-model="editForm.data_type" class="select select-bordered w-full">
+                                            <option>string</option><option>int</option><option>date</option><option>boolean</option><option>json</option><option>array</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-control">
+                                        <label class="label"><span class="label-text font-bold">Description (Markdown)</span></label>
+                                        <div class="grid grid-cols-2 gap-4">
+                                            <textarea v-model="editForm.description" class="textarea textarea-bordered h-40 font-mono text-sm"></textarea>
+                                            <div class="border rounded-lg p-3 bg-slate-50 overflow-auto h-40 md-content" v-html="renderMd(editForm.description)"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Skill Card -->
+                            <div v-if="activeTab === 'obj-prop' || activeTab === 'capability'" class="section-card">
+                                <div class="section-header"><span><i class="fas fa-brain mr-2"></i>Skill Implementation</span></div>
+                                <div class="section-body space-y-4">
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <textarea v-model="editForm.skill_md" class="textarea textarea-bordered h-40 font-mono text-sm"></textarea>
+                                        <div class="border rounded-lg p-3 bg-slate-50 overflow-auto h-40 md-content" v-html="renderMd(editForm.skill_md)"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Table Binding -->
+                            <div v-if="activeTab === 'ontology'" class="section-card border-l-4 border-l-primary">
+                                <div class="section-header text-primary">
+                                    <span><i class="fas fa-database mr-2"></i>Physical Table Mapping</span>
+                                    <div class="flex items-center gap-2">
+                                        <button v-if="editForm.table_name" @click="openManageDataModal" class="btn btn-xs btn-accent" :disabled="loading"><i class="fas fa-table-cells mr-1"></i>Manage Data</button>
+                                        <button @click="createPhysicalTable" class="btn btn-xs btn-primary" :disabled="loading"><i class="fas fa-table mr-1"></i>Create Table</button>
+                                    </div>
+                                </div>
+                                <div class="section-body space-y-4">
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div class="form-control">
+                                            <label class="label"><span class="label-text">Table Name</span></label>
+                                            <input v-model="editForm.table_name" class="input input-bordered input-sm" placeholder="e.g. t_customer" />
+                                        </div>
+                                        <div class="form-control">
+                                            <label class="label"><span class="label-text">Schema</span></label>
+                                            <input v-model="editForm.table_schema" class="input input-bordered input-sm" placeholder="public" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Bound Data Attributes -->
+                            <div v-if="activeTab === 'ontology'" class="section-card">
+                                <div class="section-header">
+                                    <span><i class="fas fa-tags mr-2"></i>Bound Data Attributes</span>
+                                    <button @click="openAttrPicker" class="btn btn-xs btn-primary"><i class="fas fa-plus mr-1"></i>添加属性</button>
+                                </div>
+                                <div class="section-body">
+                                    <div v-if="boundAttributesList.length === 0" class="text-center py-8 text-slate-400 text-sm italic border-2 border-dashed rounded">
+                                        No attributes bound. Click "添加属性" to start.
+                                    </div>
+                                    <div v-else class="overflow-x-auto border rounded">
+                                        <table class="table table-xs w-full">
+                                            <thead class="bg-base-200">
+                                                <tr>
+                                                    <th>Attribute</th>
+                                                    <th>Code</th>
+                                                    <th>Inheritance</th>
+                                                    <th>DB Field Name</th>
+                                                    <th class="w-10 text-center">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr v-for="attr in boundAttributesList" :key="attr.id">
+                                                    <td><button @click="openDetailPreview('data-attr', attr.id)" class="font-medium link link-hover">{{ attr.name }}</button></td>
+                                                    <td class="font-mono opacity-50">{{ attr.code }}</td>
+                                                    <td>
+                                                        <span v-if="editForm.inheritedAttrIds.includes(attr.id)" class="badge badge-xs badge-ghost">Inherited</span>
+                                                        <span v-if="editForm.directAttrIds.includes(attr.id)" class="badge badge-xs badge-info text-white">Direct</span>
+                                                    </td>
+                                                    <td>
+                                                        <input v-model="editForm.field_mappings[attr.id]" 
+                                                            class="input input-bordered input-xs w-full" placeholder="field_name" />
+                                                    </td>
+                                                    <td class="text-center">
+                                                        <button v-if="editForm.directAttrIds.includes(attr.id)" @click="removeDirectAttr(attr.id)" class="btn btn-xs btn-ghost text-error" title="移除直接绑定"><i class="fas fa-trash"></i></button>
+                                                        <i v-else class="fas fa-lock text-[10px] opacity-20" title="继承属性不可直接删除"></i>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Object Property: Domain/Range -->
+                            <div v-if="activeTab === 'obj-prop'" class="section-card">
+                                <div class="section-header"><span><i class="fas fa-arrows-alt-h mr-2"></i>Domain & Range</span></div>
+                                <div class="section-body grid grid-cols-2 gap-4">
+                                    <div class="border rounded p-3">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <h4 class="text-xs font-bold opacity-50 uppercase">Domain (起点)</h4>
+                                            <button @click="openClassPicker('obj-domain')" class="btn btn-xs btn-primary">配置</button>
+                                        </div>
+                                        <div class="flex flex-wrap gap-1 min-h-6">
+                                            <span v-for="cls in selectedDomainClasses" :key="'d'+cls.id" class="badge badge-outline badge-sm">{{ cls.name }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="border rounded p-3">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <h4 class="text-xs font-bold opacity-50 uppercase">Range (终点)</h4>
+                                            <button @click="openClassPicker('obj-range')" class="btn btn-xs btn-primary">配置</button>
+                                        </div>
+                                        <div class="flex flex-wrap gap-1 min-h-6">
+                                            <span v-for="cls in selectedRangeClasses" :key="'r'+cls.id" class="badge badge-outline badge-sm">{{ cls.name }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div v-if="activeTab === 'capability'" class="section-card">
+                                <div class="section-header">
+                                    <span><i class="fas fa-layer-group mr-2"></i>Capability Domain (可触发本体)</span>
+                                    <button @click="openCapabilityDomainGroupModal" class="btn btn-xs btn-primary">配置分组</button>
+                                </div>
+                                <div class="section-body space-y-2">
+                                    <div v-if="(editForm.cap_domain_groups || []).length === 0" class="text-xs opacity-50">未配置触发域分组</div>
+                                    <div v-for="(group, idx) in (editForm.cap_domain_groups || [])" :key="'cap-group-'+idx" class="border rounded p-2">
+                                        <div class="text-[10px] font-bold opacity-40 uppercase mb-1">Group {{ idx + 1 }}</div>
+                                        <div class="flex flex-wrap gap-1">
+                                            <span v-for="classId in group" :key="'group-'+idx+'-'+classId" class="badge badge-sm badge-outline">{{ classNameById(classId) }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Associated Entities -->
+                            <div class="section-card bg-slate-100/50">
+                                <div class="section-header"><span><i class="fas fa-project-diagram mr-2"></i>Associated Entities</span></div>
+                                <div class="section-body">
+                                    <div v-if="activeTab === 'ontology'" class="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <h4 class="text-[10px] font-bold opacity-40 uppercase mb-2">Object Properties</h4>
+                                            <div class="flex flex-wrap gap-1">
+                                                <div v-for="rel in selectedItemRelations" :key="rel.id" @click="openDetailPreview('obj-prop', rel.id)" class="badge badge-outline badge-sm cursor-pointer hover:bg-primary hover:text-white">{{ rel.name }} · {{ rel.roleText }}</div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <h4 class="text-[10px] font-bold opacity-40 uppercase mb-2">Capabilities</h4>
+                                            <div class="flex flex-wrap gap-1">
+                                                <div v-for="cap in selectedItemCapabilities" :key="cap.id" @click="openDetailPreview('capability', cap.id)" class="badge badge-outline badge-sm cursor-pointer hover:bg-primary hover:text-white">{{ cap.name }} · {{ cap.roleText }}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div v-else>
+                                        <h4 class="text-[10px] font-bold opacity-40 uppercase mb-2">Used by Ontologies</h4>
+                                        <div class="flex flex-wrap gap-1">
+                                            <div v-for="cls in boundOntologies" :key="cls.id" @click="navigateTo('ontology', cls.id)" class="badge badge-outline badge-sm cursor-pointer hover:bg-primary hover:text-white">{{ cls.name }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-else class="flex-1 flex flex-col items-center justify-center text-slate-300 bg-white">
+                    <i :class="['fas', currentTabIcon, 'text-8xl mb-4 opacity-5']"></i>
+                    <p class="font-medium opacity-50 uppercase tracking-widest text-sm">Select an entity to configure</p>
+                </div>
+
+                <!-- Logs Overlay -->
+                <div v-if="showLogs" class="absolute bottom-0 inset-x-0 h-64 bg-slate-900 text-slate-300 font-mono text-xs overflow-auto p-4 z-40 border-t border-slate-700 shadow-2xl">
+                    <div class="flex justify-between items-center sticky top-0 bg-slate-900 pb-2 mb-2 border-b border-slate-800">
+                        <span class="text-blue-400"><i class="fas fa-terminal mr-2"></i> CONSOLE</span>
+                        <button @click="logs = []" class="hover:text-white opacity-50">CLEAR</button>
+                    </div>
+                    <div v-for="(log, i) in logs" :key="i" class="mb-1">
+                        <span class="opacity-30">[{{ log.time }}]</span>
+                        <span :class="log.error ? 'text-rose-500' : 'text-emerald-500'" class="mx-2">{{ log.method }}</span>
+                        <span class="opacity-80">{{ log.path }}</span>
+                        <pre v-if="log.data" class="text-[10px] opacity-40 mt-1 ml-4">{{ JSON.stringify(log.data, null, 2) }}</pre>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Global Create Modal -->
+        <dialog id="create_modal" class="modal">
+            <div class="modal-box w-11/12 max-w-4xl p-0 overflow-hidden bg-white">
+                <div class="bg-slate-800 text-white p-4 flex justify-between items-center">
+                    <h3 class="font-bold flex items-center gap-2"><i class="fas fa-plus-circle text-primary"></i> Create {{ currentTabName.slice(0, -2) }}</h3>
+                    <button @click="closeCreateModal" class="opacity-50 hover:opacity-100"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="p-8 grid grid-cols-2 gap-8 h-[65vh] overflow-y-auto">
+                    <div class="space-y-4">
+                        <div class="form-control"><label class="label"><span class="label-text font-bold">Code</span></label><input v-model="createForm.code" class="input input-bordered w-full font-mono" /></div>
+                        <div class="form-control"><label class="label"><span class="label-text font-bold">Name</span></label><input v-model="createForm.name" class="input input-bordered w-full" /></div>
+                        <div v-if="activeTab === 'ontology'" class="form-control"><label class="label"><span class="label-text font-bold">Parent (Code)</span></label><input v-model="createForm.parentCode" class="input input-bordered w-full" /></div>
+                        <div v-if="activeTab === 'data-attr'" class="form-control"><label class="label"><span class="label-text font-bold">Data Type</span></label><select v-model="createForm.data_type" class="select select-bordered"><option>string</option><option>int</option><option>date</option><option>boolean</option><option>json</option><option>array</option></select></div>
+                        <div class="form-control"><label class="label"><span class="label-text font-bold">Description</span></label><textarea v-model="createForm.description" class="textarea textarea-bordered h-32"></textarea></div>
+                        <div v-if="activeTab === 'obj-prop' || activeTab === 'capability'" class="form-control">
+                            <label class="label"><span class="label-text font-bold">Skill Markdown</span></label>
+                            <textarea v-model="createForm.skill_md" class="textarea textarea-bordered h-32"></textarea>
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        <div v-if="activeTab === 'obj-prop'" class="p-4 bg-slate-50 rounded border border-dashed space-y-3">
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-[10px] font-bold opacity-30">Domain (起点)</h4>
+                                <button @click="openClassPicker('create-obj-domain')" class="btn btn-xs btn-primary">配置</button>
+                            </div>
+                            <div class="flex flex-wrap gap-1">
+                                <span v-for="cid in createForm.domain_ids" :key="'create-d-'+cid" class="badge badge-outline badge-sm">{{ classNameById(cid) }}</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-[10px] font-bold opacity-30">Range (终点)</h4>
+                                <button @click="openClassPicker('create-obj-range')" class="btn btn-xs btn-primary">配置</button>
+                            </div>
+                            <div class="flex flex-wrap gap-1">
+                                <span v-for="cid in createForm.range_ids" :key="'create-r-'+cid" class="badge badge-outline badge-sm">{{ classNameById(cid) }}</span>
+                            </div>
+                        </div>
+                        <div v-if="activeTab === 'capability'" class="p-4 bg-slate-50 rounded border border-dashed space-y-3">
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-[10px] font-bold opacity-30">Domain Groups (可触发本体)</h4>
+                                <button @click="openCapabilityDomainGroupModal(true)" class="btn btn-xs btn-primary">配置分组</button>
+                            </div>
+                            <div v-if="(createForm.cap_domain_groups || []).length === 0" class="text-xs opacity-50">未配置</div>
+                            <div v-for="(group, idx) in (createForm.cap_domain_groups || [])" :key="'create-cap-group-'+idx" class="flex flex-wrap gap-1">
+                                <span class="badge badge-ghost badge-sm">G{{ idx + 1 }}</span>
+                                <span v-for="cid in group" :key="'create-cap-group-'+idx+'-'+cid" class="badge badge-outline badge-sm">{{ classNameById(cid) }}</span>
+                            </div>
+                        </div>
+                        <div class="p-4 bg-slate-50 rounded border border-dashed">
+                            <h4 class="text-[10px] font-bold opacity-30 mb-2">Description Preview</h4>
+                            <div class="md-content prose prose-xs" v-html="renderMd(createForm.description)"></div>
+                        </div>
+                        <div v-if="activeTab === 'obj-prop' || activeTab === 'capability'" class="p-4 bg-slate-50 rounded border border-dashed">
+                            <h4 class="text-[10px] font-bold opacity-30 mb-2">Skill Preview</h4>
+                            <div class="md-content prose prose-xs" v-html="renderMd(createForm.skill_md)"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-4 bg-slate-50 border-t flex justify-end gap-2"><button @click="closeCreateModal" class="btn btn-sm btn-ghost">Cancel</button><button @click="executeCreate" class="btn btn-sm btn-primary px-8">Create</button></div>
+            </div>
+        </dialog>
+
+        <!-- Attribute Picker Modal -->
+        <dialog id="attr_picker_modal" class="modal">
+            <div class="modal-box w-11/12 max-w-2xl p-0 overflow-hidden bg-white">
+                <div class="bg-primary text-primary-content p-4 flex justify-between items-center">
+                    <h3 class="font-bold"><i class="fas fa-list mr-2"></i>添加数据属性</h3>
+                    <button @click="closeAttrPicker" class="btn btn-sm btn-ghost"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="p-4 space-y-4">
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-3 top-3 text-slate-400"></i>
+                        <input v-model="attrSearchQuery" class="input input-bordered w-full pl-10" placeholder="搜索属性名称或编码..." />
+                    </div>
+                    <div class="max-h-96 overflow-auto border rounded divide-y">
+                        <label v-for="attr in filteredAllAttrs" :key="attr.id" class="flex items-center gap-3 p-3 hover:bg-slate-50 cursor-pointer">
+                            <input type="checkbox" :value="attr.id" v-model="tempDirectAttrIds" class="checkbox checkbox-primary" />
+                            <div class="flex-1">
+                                <div class="font-medium">{{ attr.name }}</div>
+                                <div class="text-xs font-mono opacity-50">{{ attr.code }} ({{ attr.data_type }})</div>
+                            </div>
+                            <div v-if="editForm.inheritedAttrIds.includes(attr.id)" class="badge badge-xs badge-ghost">Already Inherited</div>
+                        </label>
+                    </div>
+                </div>
+                <div class="p-4 bg-slate-50 border-t flex justify-end gap-2">
+                    <button @click="closeAttrPicker" class="btn btn-ghost">取消</button>
+                    <button @click="confirmAttrPicker" class="btn btn-primary px-8">确认选择</button>
+                </div>
+            </div>
+        </dialog>
+
+        <!-- Class Picker Modal -->
+        <dialog id="class_picker_modal" class="modal">
+            <div class="modal-box w-11/12 max-w-3xl p-0 overflow-hidden bg-white">
+                <div class="bg-primary text-primary-content p-4 flex justify-between items-center">
+                    <h3 class="font-bold"><i class="fas fa-sitemap mr-2"></i>{{ classPickerTitle }}</h3>
+                    <button @click="closeClassPicker" class="btn btn-sm btn-ghost"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="p-4 max-h-[70vh] overflow-auto">
+                    <div v-if="flatClassTreeWithDepth.length === 0" class="text-center py-8 text-slate-400 text-sm">暂无本体可选</div>
+                    <label v-for="node in flatClassTreeWithDepth" :key="'picker-'+node.id" class="flex items-center gap-2 p-1 hover:bg-slate-50 rounded cursor-pointer">
+                        <span :style="{ width: (node.depth * 16) + 'px' }"></span>
+                        <input type="checkbox" :value="node.id" v-model="classPickerSelection" class="checkbox checkbox-sm" />
+                        <span class="text-sm">{{ node.name }}</span>
+                    </label>
+                </div>
+                <div class="p-4 bg-slate-50 border-t flex justify-end gap-2">
+                    <button @click="closeClassPicker" class="btn btn-ghost">取消</button>
+                    <button @click="confirmClassPicker" class="btn btn-primary px-8">确认</button>
+                </div>
+            </div>
+        </dialog>
+
+        <!-- Capability Domain Groups Modal -->
+        <dialog id="cap_domain_group_modal" class="modal">
+            <div class="modal-box w-11/12 max-w-4xl p-0 overflow-hidden bg-white">
+                <div class="bg-primary text-primary-content p-4 flex justify-between items-center">
+                    <h3 class="font-bold"><i class="fas fa-layer-group mr-2"></i>配置 Capability Domain 分组</h3>
+                    <button @click="closeCapabilityDomainGroupModal" class="btn btn-sm btn-ghost"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="p-4 grid grid-cols-3 gap-4 max-h-[70vh] overflow-auto">
+                    <div class="border rounded p-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <h4 class="text-xs font-bold uppercase opacity-50">Groups</h4>
+                            <button @click="addTempCapabilityGroup" class="btn btn-xs btn-primary">新增</button>
+                        </div>
+                        <div class="space-y-1">
+                            <button v-for="(group, idx) in tempCapDomainGroups" :key="'g-btn-'+idx" @click="activeTempGroupIndex = idx" :class="['btn btn-xs w-full justify-start', activeTempGroupIndex === idx ? 'btn-primary' : 'btn-ghost']">G{{ idx + 1 }} ({{ group.length }})</button>
+                        </div>
+                    </div>
+                    <div class="border rounded p-3 col-span-2">
+                        <div class="flex items-center justify-between mb-2">
+                            <h4 class="text-xs font-bold uppercase opacity-50">Ontology Tree</h4>
+                            <button @click="removeTempCapabilityGroup" class="btn btn-xs btn-error" :disabled="tempCapDomainGroups.length === 0">删除当前组</button>
+                        </div>
+                        <div v-if="tempCapDomainGroups.length === 0" class="text-center py-8 text-slate-400 text-sm">请先新增分组</div>
+                        <div v-else>
+                            <label v-for="node in flatClassTreeWithDepth" :key="'cap-picker-'+node.id" class="flex items-center gap-2 p-1 hover:bg-slate-50 rounded cursor-pointer">
+                                <span :style="{ width: (node.depth * 16) + 'px' }"></span>
+                                <input type="checkbox" :value="node.id" v-model="tempCapDomainGroups[activeTempGroupIndex]" class="checkbox checkbox-sm" />
+                                <span class="text-sm">{{ node.name }}</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-4 bg-slate-50 border-t flex justify-end gap-2">
+                    <button @click="closeCapabilityDomainGroupModal" class="btn btn-ghost">取消</button>
+                    <button @click="confirmCapabilityDomainGroupModal" class="btn btn-primary px-8">确认</button>
+                </div>
+            </div>
+        </dialog>
+
+        <!-- Detail Preview Modal -->
+        <dialog id="detail_preview_modal" class="modal">
+            <div class="modal-box w-11/12 max-w-3xl p-0 overflow-hidden bg-white">
+                <div class="bg-slate-800 text-white p-4 flex justify-between items-center">
+                    <h3 class="font-bold"><i class="fas fa-eye mr-2"></i>{{ previewModal.title }}</h3>
+                    <button @click="closeDetailPreview" class="opacity-50 hover:opacity-100"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="p-4 space-y-2">
+                    <div class="text-xs font-mono opacity-50">{{ previewModal.code }}</div>
+                    <div class="font-bold text-lg">{{ previewModal.name }}</div>
+                    <div class="text-sm whitespace-pre-wrap">{{ previewModal.description || '无描述' }}</div>
+                </div>
+                <div class="p-4 bg-slate-50 border-t flex justify-end gap-2">
+                    <button @click="closeDetailPreview" class="btn btn-sm btn-ghost">关闭</button>
+                    <button @click="openPreviewInEditor" class="btn btn-sm btn-primary">编辑</button>
+                </div>
+            </div>
+        </dialog>
+
+        <!-- Manage Data Modal -->
+        <dialog id="manage_data_modal" class="modal">
+            <div class="modal-box w-11/12 max-w-7xl p-0 overflow-hidden bg-white">
+                <div class="bg-slate-800 text-white p-4 flex justify-between items-center">
+                    <h3 class="font-bold"><i class="fas fa-database mr-2"></i>Manage Data - {{ editForm.table_name || '-' }}</h3>
+                    <button @click="closeManageDataModal" class="opacity-60 hover:opacity-100"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="p-4 space-y-4 max-h-[75vh] overflow-auto">
+                    <div class="grid grid-cols-12 gap-2 items-end">
+                        <div class="col-span-3">
+                            <label class="label py-1"><span class="label-text text-xs">Filter Field</span></label>
+                            <select v-model="manageData.filter_field" class="select select-bordered select-sm w-full">
+                                <option value="">-</option>
+                                <option v-for="col in manageData.columns" :key="'f-'+col.field_name" :value="col.field_name">{{ col.field_name }}</option>
+                            </select>
+                        </div>
+                        <div class="col-span-2">
+                            <label class="label py-1"><span class="label-text text-xs">Operator</span></label>
+                            <select v-model="manageData.filter_op" class="select select-bordered select-sm w-full">
+                                <option value="eq">eq</option>
+                                <option value="like">like</option>
+                                <option value="in">in</option>
+                            </select>
+                        </div>
+                        <div class="col-span-3">
+                            <label class="label py-1"><span class="label-text text-xs">Value</span></label>
+                            <input v-model="manageData.filter_value" class="input input-bordered input-sm w-full" />
+                        </div>
+                        <div class="col-span-2">
+                            <label class="label py-1"><span class="label-text text-xs">Sort</span></label>
+                            <select v-model="manageData.sort_field" class="select select-bordered select-sm w-full">
+                                <option value="">-</option>
+                                <option v-for="col in manageData.columns" :key="'s-'+col.field_name" :value="col.field_name">{{ col.field_name }}</option>
+                            </select>
+                        </div>
+                        <div class="col-span-1">
+                            <label class="label py-1"><span class="label-text text-xs">Dir</span></label>
+                            <select v-model="manageData.sort_order" class="select select-bordered select-sm w-full">
+                                <option value="asc">asc</option>
+                                <option value="desc">desc</option>
+                            </select>
+                        </div>
+                        <div class="col-span-1 flex gap-1">
+                            <button @click="queryManageData(1)" class="btn btn-sm btn-primary">Query</button>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto border rounded">
+                        <table class="table table-xs w-full">
+                            <thead class="bg-base-200">
+                                <tr>
+                                    <th v-for="col in manageData.columns" :key="'h-'+col.field_name">{{ col.field_name }}</th>
+                                    <th class="w-20">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(row, idx) in manageData.items" :key="'r-'+idx">
+                                    <td v-for="col in manageData.columns" :key="'c-'+idx+'-'+col.field_name">
+                                        <span>{{ formatDataCell(row[col.field_name]) }}</span>
+                                    </td>
+                                    <td>
+                                        <button @click="startEditDataRow(row)" class="btn btn-xs btn-outline">Edit</button>
+                                    </td>
+                                </tr>
+                                <tr v-if="manageData.items.length === 0">
+                                    <td :colspan="manageData.columns.length + 1" class="text-center py-4 opacity-50">No data</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="flex justify-between items-center">
+                        <div class="text-xs opacity-60">Total: {{ manageData.total }} | Page {{ manageData.page }}</div>
+                        <div class="flex gap-2">
+                            <button @click="queryManageData(manageData.page - 1)" class="btn btn-xs" :disabled="manageData.page <= 1">Prev</button>
+                            <button @click="queryManageData(manageData.page + 1)" class="btn btn-xs" :disabled="manageData.page * manageData.page_size >= manageData.total">Next</button>
+                        </div>
+                    </div>
+
+                    <div class="border rounded p-3 space-y-2">
+                        <div class="font-bold text-sm">Add Row</div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div v-for="col in manageData.columns" :key="'n-'+col.field_name">
+                                <label class="label py-1"><span class="label-text text-xs">{{ col.field_name }}</span></label>
+                                <input v-model="manageData.new_row[col.field_name]" class="input input-bordered input-sm w-full" />
+                            </div>
+                        </div>
+                        <button @click="createManageDataRow" class="btn btn-sm btn-primary">Add</button>
+                    </div>
+
+                    <div v-if="manageData.editing_row_token" class="border rounded p-3 space-y-2">
+                        <div class="font-bold text-sm">Edit Row</div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div v-for="col in manageData.columns" :key="'e-'+col.field_name">
+                                <label class="label py-1"><span class="label-text text-xs">{{ col.field_name }}</span></label>
+                                <input v-model="manageData.edit_row[col.field_name]" class="input input-bordered input-sm w-full" />
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button @click="saveEditDataRow" class="btn btn-sm btn-primary">Save</button>
+                            <button @click="cancelEditDataRow" class="btn btn-sm btn-ghost">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </dialog>
+
+        <!-- Toasts -->
+        <div class="toast toast-end toast-bottom z-50">
+            <div v-for="t in toasts" :key="t.id" :class="['alert shadow-2xl border-none text-white', t.type === 'error' ? 'bg-rose-500' : 'bg-emerald-500']">
+                <span>{{ t.msg }}</span>
+            </div>
+        </div>
     </div>
 
-    <div class="tabs">
-      <button type="button" class="tab active" onclick="showPage('p-class', this)">本体</button>
-      <button type="button" class="tab" onclick="showPage('p-attr', this)">数据属性</button>
-      <button type="button" class="tab" onclick="showPage('p-rel', this)">对象属性</button>
-      <button type="button" class="tab" onclick="showPage('p-cap', this)">能力</button>
-      <button type="button" class="tab" onclick="showPage('p-bind', this)">关联配置</button>
-    </div>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 
-    <div id="p-class" class="card page active">
-      <div class="title">本体管理（树、继承、数据属性绑定）</div>
-      <div class="row"><input id="clsCode" placeholder="class code" /><input id="clsName" placeholder="class name" /><button type="button" onclick="createClass()">创建</button></div>
-      <div class="md">
-        <textarea id="clsDesc" class="lg" placeholder="本体描述（Markdown）" oninput="previewMd('clsDesc','clsDescPreview')"></textarea>
-        <div id="clsDescPreview" class="md-preview"></div>
-      </div>
-      <div class="row">
-        <input id="clsId" placeholder="class_id" />
-        <input id="parentId" placeholder="parent_class_id" />
-        <button type="button" onclick="addInheritance()">设置父节点</button>
-        <button type="button" class="secondary" onclick="loadClassTree()">刷新本体树</button>
-      </div>
-      <div class="row"><input id="uName" placeholder="更新 name" /><button type="button" class="secondary" onclick="updateClass()">更新本体</button></div>
-      <div class="row"><input id="bindAttrIdsOnClass" placeholder="为当前 class 绑定数据属性 IDs: 1,2,3" /><button type="button" onclick="bindAttrsOnClass()">绑定数据属性</button></div>
-      <div id="classTree" class="mono"></div>
-    </div>
+    <script>
+        const { createApp, ref, reactive, computed, onMounted, onBeforeUnmount, watch } = Vue;
 
-    <div id="p-attr" class="card page">
-      <div class="title">数据属性（全局目录）</div>
-      <div class="row"><input id="attrCode" placeholder="attribute code" /><input id="attrName" placeholder="attribute name" /><select id="attrType"><option>string</option><option>int</option><option>date</option><option>boolean</option><option>json</option></select></div>
-      <div class="md">
-        <textarea id="attrDesc" class="lg" placeholder="数据属性描述（Markdown）" oninput="previewMd('attrDesc','attrDescPreview')"></textarea>
-        <div id="attrDescPreview" class="md-preview"></div>
-      </div>
-      <div class="row"><button type="button" onclick="createAttr()">创建全局属性</button><button type="button" class="secondary" onclick="listAttrs()">刷新属性目录</button></div>
-      <div id="attrList" class="mono"></div>
-    </div>
+        const TreeItem = {
+            name: 'TreeItem',
+            props: ['node', 'activeId'],
+            emits: ['select', 'add-child'],
+            template: `
+                <div class="tree-node-wrap">
+                    <div @click="$emit('select', node)"
+                        :class="['px-2 py-1.5 cursor-pointer rounded flex items-center gap-2 group text-sm transition-colors', activeId === node.id ? 'active-item font-bold' : 'hover:bg-base-200']">
+                        <i v-if="node.children && node.children.length" class="fas fa-folder text-amber-500 opacity-60"></i>
+                        <i v-else class="fas fa-cube text-blue-400 opacity-60"></i>
+                        <span class="flex-1 truncate">{{ node.name }}</span>
+                        <button @click.stop="$emit('add-child', node)" class="opacity-0 group-hover:opacity-100 hover:text-primary"><i class="fas fa-plus-circle text-xs"></i></button>
+                    </div>
+                    <div v-if="node.children && node.children.length" class="tree-node">
+                        <tree-item v-for="child in node.children" :key="child.id" :node="child" :active-id="activeId" @select="$emit('select', $event)" @add-child="$emit('add-child', $event)"></tree-item>
+                    </div>
+                </div>
+            `
+        };
 
-    <div id="p-rel" class="card page">
-      <div class="title">对象属性（domain/range + skill + MCP）</div>
-      <div class="row"><input id="relCode" placeholder="object property code" /><input id="relName" placeholder="object property name" /><select id="relType"><option>query</option><option>transform</option></select></div>
-      <div class="row"><input id="relDomains" placeholder="domain class ids: 1,2" /><input id="relRanges" placeholder="range class ids: 3,4" /></div>
-      <div class="md">
-        <textarea id="relDesc" class="lg" placeholder="对象属性描述（Markdown）" oninput="previewMd('relDesc','relDescPreview')"></textarea>
-        <div id="relDescPreview" class="md-preview"></div>
-      </div>
-      <div class="md">
-        <textarea id="relSkill" class="lg" placeholder="对象属性 skill 内容（Markdown）" oninput="previewMd('relSkill','relSkillPreview')"></textarea>
-        <div id="relSkillPreview" class="md-preview"></div>
-      </div>
-      <div class="row"><textarea id="relMcp" placeholder='关联 MCP(JSON 数组)，如: [{"name":"m1","entry":"..." }]' class="lg"></textarea></div>
-      <div class="row"><button type="button" onclick="createRel()">创建对象属性</button><button type="button" class="secondary" onclick="listRels()">刷新对象属性目录</button></div>
-      <div id="relList" class="mono"></div>
-    </div>
+        createApp({
+            components: { TreeItem },
+            setup() {
+                const activeTab = ref('ontology');
+                const selectedId = ref(null);
+                const selectedItem = ref(null);
+                const searchQuery = ref('');
+                const attrSearchQuery = ref('');
+                const loading = ref(false);
+                const showLogs = ref(false);
+                const logs = ref([]);
+                const toasts = ref([]);
+                const tempDirectAttrIds = ref([]);
+                const classPickerTarget = ref('');
+                const classPickerSelection = ref([]);
+                const classPickerTitle = ref('选择本体');
+                const tempCapDomainGroups = ref([]);
+                const activeTempGroupIndex = ref(0);
+                const capDomainForCreate = ref(false);
+                const previewModal = reactive({ tab: '', id: null, title: '', code: '', name: '', description: '' });
+                const theme = ref(localStorage.getItem('uiTheme') || 'light');
+                const isDarkTheme = computed(() => theme.value === 'dark');
 
-    <div id="p-cap" class="card page">
-      <div class="title">能力（全局目录 + 绑定到本体）</div>
-      <div class="row"><input id="capCode" placeholder="capability code" /><input id="capName" placeholder="capability name" /></div>
-      <div class="md">
-        <textarea id="capDesc" class="lg" placeholder="能力描述（Markdown）" oninput="previewMd('capDesc','capDescPreview')"></textarea>
-        <div id="capDescPreview" class="md-preview"></div>
-      </div>
-      <div class="md">
-        <textarea id="capSkill" class="lg" placeholder="能力 skill 内容（Markdown）" oninput="previewMd('capSkill','capSkillPreview')"></textarea>
-        <div id="capSkillPreview" class="md-preview"></div>
-      </div>
-      <div class="row"><textarea id="capMcp" placeholder='关联 MCP(JSON 数组)' class="lg"></textarea></div>
-      <div class="row"><button type="button" onclick="createCap()">创建能力</button><button type="button" class="secondary" onclick="listCaps()">刷新能力目录</button></div>
-      <div class="row"><input id="bindCapClassId" placeholder="class_id" /><input id="bindCapIds" placeholder="capability_ids: 1,2" /><button type="button" onclick="bindCaps()">绑定到本体</button></div>
-      <div id="capList" class="mono"></div>
-    </div>
+                const config = reactive({
+                    tenantId: localStorage.getItem('tenantId') || 'tenant-a',
+                    token: localStorage.getItem('token') || 'test-token'
+                });
 
-    <div id="p-bind" class="card page">
-      <div class="title">关联配置（一本体一关联表 + 字段映射 + OWL）</div>
-      <div class="row"><input id="tbClassId" placeholder="class_id" /><input id="tbName" placeholder="table_name" /><input id="tbSchema" placeholder="table_schema" value="public" /><button type="button" onclick="saveTableBinding()">保存关联表</button></div>
-      <div class="row"><input id="fmClassId" placeholder="class_id" /><input id="fmAttrId" placeholder="data_attribute_id" /><input id="fmFieldName" placeholder="field_name" /><button type="button" onclick="saveFieldMapping()">保存字段映射</button></div>
-      <div class="row"><button type="button" class="secondary" onclick="owlValidate()">OWL 校验</button><button type="button" class="secondary" onclick="owlExport()">OWL 导出 TTL</button></div>
-      <div class="muted">说明：对象属性和本体关系以 domain/range 为准，不再提供额外绑定。</div>
-    </div>
+                const tabs = [
+                    { id: 'ontology', name: 'Ontologies', icon: 'fa-sitemap' },
+                    { id: 'data-attr', name: 'Data Attributes', icon: 'fa-list' },
+                    { id: 'obj-prop', name: 'Object Properties', icon: 'fa-project-diagram' },
+                    { id: 'capability', name: 'Capabilities', icon: 'fa-bolt' }
+                ];
 
-    <div class="card"><div class="title">输出</div><div id="out" class="mono"></div></div>
-  </div>
+                const currentTabName = computed(() => tabs.find(t => t.id === activeTab.value).name);
+                const currentTabIcon = computed(() => tabs.find(t => t.id === activeTab.value).icon);
 
-  <script>
-    function h(){
-      return {
-        "Content-Type":"application/json",
-        "X-Tenant-Id":document.getElementById("tenantId").value.trim(),
-        "Authorization":"Bearer "+document.getElementById("token").value.trim()
-      };
-    }
-    function show(v){ document.getElementById("out").textContent = JSON.stringify(v, null, 2); }
-    function ids(v){ return v.split(",").map(x => Number(x.trim())).filter(x => Number.isFinite(x) && x > 0); }
-    function parseJsonArray(v){ if(!v.trim()) return []; const o = JSON.parse(v); return Array.isArray(o) ? o : []; }
-    function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
-    function md(s){
-      let t = esc(s);
-      t = t.replace(/^### (.*)$/gm,"<h3>$1</h3>").replace(/^## (.*)$/gm,"<h2>$1</h2>").replace(/^# (.*)$/gm,"<h1>$1</h1>");
-      t = t.replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>").replace(/\*(.*?)\*/g,"<em>$1</em>").replace(/`([^`]+)`/g,"<code>$1</code>");
-      t = t.replace(/^- (.*)$/gm,"<li>$1</li>").replace(/(<li>.*<\/li>)/gs,"<ul>$1</ul>");
-      return t.replace(/\n/g,"<br/>");
-    }
-    function previewMd(fromId,toId){ document.getElementById(toId).innerHTML = md(document.getElementById(fromId).value); }
-    async function call(method,path,body){ const r = await fetch(path,{method,headers:h(),body:body?JSON.stringify(body):undefined}); const d = await r.json(); show(d); if(d.code!==0) throw new Error(d.message||"request failed"); return d.data; }
+                const ontologyTree = ref([]);
+                const flatOntologies = ref([]);
+                const dataAttrs = ref([]);
+                const objectProps = ref([]);
+                const capabilities = ref([]);
 
-    function showPage(pageId, tabEl){
-      document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
-      document.querySelectorAll(".page").forEach(x => x.classList.remove("active"));
-      tabEl.classList.add("active");
-      document.getElementById(pageId).classList.add("active");
-    }
+                const editForm = reactive({
+                    name: '', description: '', data_type: 'string', skill_md: '',
+                    directAttrIds: [], inheritedAttrIds: [], domain_ids: [], range_ids: [],
+                    cap_domain_groups: [],
+                    table_name: '', table_schema: 'public', field_mappings: {}
+                });
 
-    async function createClass(){
-      await call("POST","/api/v1/ontology/classes",{
-        code:document.getElementById("clsCode").value.trim(),
-        name:document.getElementById("clsName").value.trim(),
-        description:document.getElementById("clsDesc").value.trim()||null
-      });
-      await loadClassTree();
-    }
-    async function updateClass(){
-      await call("PUT",`/api/v1/ontology/classes/${document.getElementById("clsId").value.trim()}`,{
-        name:document.getElementById("uName").value.trim()||null,
-        description:document.getElementById("clsDesc").value.trim()||null
-      });
-      await loadClassTree();
-    }
-    async function addInheritance(){
-      await call("POST",`/api/v1/ontology/classes/${document.getElementById("clsId").value.trim()}/inheritance`,{
-        parent_class_id:Number(document.getElementById("parentId").value.trim())
-      });
-      await loadClassTree();
-    }
-    async function bindAttrsOnClass(){
-      await call("POST",`/api/v1/ontology/classes/${document.getElementById("clsId").value.trim()}/data-attributes:bind`,{
-        data_attribute_ids:ids(document.getElementById("bindAttrIdsOnClass").value)
-      });
-    }
-    async function loadClassTree(){ const d = await call("GET","/api/v1/ontology/tree"); document.getElementById("classTree").textContent = JSON.stringify(d.items||[], null, 2); }
+                const createForm = reactive({
+                    code: '', name: '', description: '', parentCode: '', data_type: 'string', skill_md: '',
+                    domain_ids: [], range_ids: [], cap_domain_groups: []
+                });
+                const manageData = reactive({
+                    page: 1,
+                    page_size: 20,
+                    total: 0,
+                    items: [],
+                    columns: [],
+                    filter_field: '',
+                    filter_op: 'eq',
+                    filter_value: '',
+                    sort_field: '',
+                    sort_order: 'asc',
+                    new_row: {},
+                    edit_row: {},
+                    editing_row_token: ''
+                });
 
-    async function createAttr(){
-      await call("POST","/api/v1/ontology/data-attributes",{
-        code:document.getElementById("attrCode").value.trim(),
-        name:document.getElementById("attrName").value.trim(),
-        data_type:document.getElementById("attrType").value,
-        description:document.getElementById("attrDesc").value.trim()||null
-      });
-      await listAttrs();
-    }
-    async function listAttrs(){ const d = await call("GET","/api/v1/ontology/data-attributes"); document.getElementById("attrList").textContent = JSON.stringify(d.items||[], null, 2); }
+                const filteredTree = computed(() => {
+                    if (!searchQuery.value) return ontologyTree.value;
+                    const filter = (nodes) => nodes.reduce((acc, n) => {
+                        const match = n.name.toLowerCase().includes(searchQuery.value.toLowerCase()) || n.code.toLowerCase().includes(searchQuery.value.toLowerCase());
+                        const children = n.children ? filter(n.children) : [];
+                        if (match || children.length) acc.push({ ...n, children });
+                        return acc;
+                    }, []);
+                    return filter(ontologyTree.value);
+                });
 
-    async function createRel(){
-      await call("POST","/api/v1/ontology/object-properties",{
-        code:document.getElementById("relCode").value.trim(),
-        name:document.getElementById("relName").value.trim(),
-        description:document.getElementById("relDesc").value.trim()||null,
-        skill_md:document.getElementById("relSkill").value.trim()||null,
-        relation_type:document.getElementById("relType").value,
-        domain_class_ids:ids(document.getElementById("relDomains").value),
-        range_class_ids:ids(document.getElementById("relRanges").value),
-        mcp_bindings_json:parseJsonArray(document.getElementById("relMcp").value)
-      });
-      await listRels();
-    }
-    async function listRels(){ const d = await call("GET","/api/v1/ontology/object-properties"); document.getElementById("relList").textContent = JSON.stringify(d.items||[], null, 2); }
+                const filteredList = computed(() => {
+                    let list = activeTab.value === 'data-attr' ? dataAttrs.value : (activeTab.value === 'obj-prop' ? objectProps.value : capabilities.value);
+                    if (searchQuery.value) list = list.filter(i => i.name.toLowerCase().includes(searchQuery.value.toLowerCase()) || i.code.toLowerCase().includes(searchQuery.value.toLowerCase()));
+                    return list;
+                });
 
-    async function createCap(){
-      await call("POST","/api/v1/ontology/capabilities",{
-        code:document.getElementById("capCode").value.trim(),
-        name:document.getElementById("capName").value.trim(),
-        description:document.getElementById("capDesc").value.trim()||null,
-        skill_md:document.getElementById("capSkill").value.trim()||null,
-        input_schema:{type:"object",properties:{}},
-        output_schema:{type:"object",properties:{}},
-        mcp_bindings_json:parseJsonArray(document.getElementById("capMcp").value)
-      });
-      await listCaps();
-    }
-    async function bindCaps(){
-      await call("POST",`/api/v1/ontology/classes/${document.getElementById("bindCapClassId").value.trim()}/capabilities:bind`,{
-        capability_ids:ids(document.getElementById("bindCapIds").value)
-      });
-    }
-    async function listCaps(){ const d = await call("GET","/api/v1/ontology/capabilities"); document.getElementById("capList").textContent = JSON.stringify(d.items||[], null, 2); }
+                const filteredAllAttrs = computed(() => {
+                    if (!attrSearchQuery.value) return dataAttrs.value;
+                    return dataAttrs.value.filter(a => a.name.toLowerCase().includes(attrSearchQuery.value.toLowerCase()) || a.code.toLowerCase().includes(attrSearchQuery.value.toLowerCase()));
+                });
+                const flatClassTreeWithDepth = computed(() => {
+                    const out = [];
+                    const walk = (nodes, depth = 0) => {
+                        for (const node of (nodes || [])) {
+                            out.push({ id: node.id, name: node.name, depth });
+                            walk(node.children || [], depth + 1);
+                        }
+                    };
+                    walk(ontologyTree.value, 0);
+                    return out;
+                });
 
-    async function saveTableBinding(){
-      await call("PUT",`/api/v1/ontology/classes/${document.getElementById("tbClassId").value.trim()}/table-binding`,{
-        table_name:document.getElementById("tbName").value.trim(),
-        table_schema:document.getElementById("tbSchema").value.trim()||null
-      });
-    }
-    async function saveFieldMapping(){
-      await call("PUT",`/api/v1/ontology/classes/${document.getElementById("fmClassId").value.trim()}/table-binding/field-mapping`,{
-        mappings:[{
-          data_attribute_id:Number(document.getElementById("fmAttrId").value.trim()),
-          field_name:document.getElementById("fmFieldName").value.trim()
-        }]
-      });
-    }
-    async function owlValidate(){ await call("POST","/api/v1/ontology/owl:validate",{strict:true}); }
-    async function owlExport(){ await call("GET","/api/v1/ontology/owl:export?format=ttl"); }
+                const boundAttributesList = computed(() => {
+                    const allIds = [...new Set([...editForm.directAttrIds, ...editForm.inheritedAttrIds])];
+                    return dataAttrs.value.filter(a => allIds.includes(a.id)).sort((a,b) => a.id - b.id);
+                });
 
-    window.addEventListener("DOMContentLoaded", () => {
-      ["clsDesc","attrDesc","relDesc","relSkill","capDesc","capSkill"].forEach(id => previewMd(id, id+"Preview"));
-      loadClassTree().catch(e => show({error:String(e)}));
-    });
-  </script>
+                const boundOntologies = computed(() => {
+                    if (!selectedId.value) return [];
+                    if (activeTab.value === 'data-attr') return flatOntologies.value.filter(o => o.bound_attrs?.includes(selectedId.value));
+                    if (activeTab.value === 'capability') return flatOntologies.value.filter(o => o.bound_caps?.includes(selectedId.value));
+                    return [];
+                });
+                const selectedDomainClasses = computed(() => flatOntologies.value.filter(cls => (editForm.domain_ids || []).includes(cls.id)));
+                const selectedRangeClasses = computed(() => flatOntologies.value.filter(cls => (editForm.range_ids || []).includes(cls.id)));
+                const selectedItemRelations = computed(() => {
+                    if (activeTab.value !== 'ontology' || !selectedId.value) return [];
+                    const ancestorIds = new Set((selectedItem.value?.ancestor_ids || []).map(Number));
+                    const scopeIds = new Set([Number(selectedId.value), ...ancestorIds]);
+                    return objectProps.value
+                        .filter(p => {
+                            const domainIds = (p.domain_class_ids || []).map(Number);
+                            const rangeIds = (p.range_class_ids || []).map(Number);
+                            return domainIds.some(id => scopeIds.has(id)) || rangeIds.some(id => scopeIds.has(id));
+                        })
+                        .map(p => {
+                            const domainIds = new Set((p.domain_class_ids || []).map(Number));
+                            const rangeIds = new Set((p.range_class_ids || []).map(Number));
+                            const scopeInDomain = [...scopeIds].some(id => domainIds.has(id));
+                            const scopeInRange = [...scopeIds].some(id => rangeIds.has(id));
+                            const selfInDomain = domainIds.has(Number(selectedId.value));
+                            const selfInRange = rangeIds.has(Number(selectedId.value));
+                            const role = scopeInDomain && scopeInRange ? 'domain/range' : (scopeInDomain ? 'domain' : 'range');
+                            const source = (selfInDomain || selfInRange) ? 'Direct' : 'Inherited';
+                            return { ...p, roleText: `${role} · ${source}` };
+                        });
+                });
+                const selectedItemCapabilities = computed(() => {
+                    if (activeTab.value !== 'ontology' || !selectedId.value) return [];
+                    const ancestorIds = new Set((selectedItem.value?.ancestor_ids || []).map(Number));
+                    const scopeIds = new Set([Number(selectedId.value), ...ancestorIds]);
+                    return capabilities.value
+                        .filter(c => {
+                            const inScopeGroup = (c.domain_groups || []).some(g => (g || []).map(Number).some(id => scopeIds.has(id)));
+                            return inScopeGroup || selectedItem.value.bound_caps?.includes(c.id);
+                        })
+                        .map(c => {
+                            const selfInGroup = (c.domain_groups || []).some(g => (g || []).map(Number).includes(Number(selectedId.value)));
+                            const source = selfInGroup ? 'Direct' : 'Inherited';
+                            return { ...c, roleText: `domain · ${source}` };
+                        });
+                });
+                const formatDateTime = (date = new Date()) => {
+                    const pad = (n) => String(n).padStart(2, '0');
+                    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+                };
+                const ideLog = (...args) => {
+                    console.log(`[${formatDateTime()}]`, ...args);
+                };
+                const formatDataCell = (value) => {
+                    if (value === null || value === undefined) return '';
+                    if (typeof value === 'object') return JSON.stringify(value);
+                    return String(value);
+                };
+                const parseInputValueByType = (raw, dataType) => {
+                    if (raw === '' || raw === null || raw === undefined) return null;
+                    if (dataType === 'int') return Number(raw);
+                    if (dataType === 'boolean') return String(raw).toLowerCase() === 'true' || String(raw) === '1';
+                    if (dataType === 'json' || dataType === 'array') return JSON.parse(raw);
+                    return raw;
+                };
+
+                const call = async (method, path, body = null) => {
+                    loading.value = true;
+                    try {
+                        const res = await fetch(path, {
+                            method,
+                            headers: { "Content-Type": "application/json", "X-Tenant-Id": config.tenantId, "Authorization": `Bearer ${config.token}` },
+                            body: body ? JSON.stringify(body) : null
+                        });
+                        const data = await res.json();
+                        logs.value.unshift({ time: formatDateTime(), method, path, data, error: data.code !== 0 });
+                        if (data.code !== 0) throw new Error(data.message);
+                        return data.data;
+                    } catch (e) {
+                        toast(e.message, 'error');
+                        return null;
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                const toast = (msg, type = 'success') => {
+                    const id = Date.now();
+                    toasts.value.push({ id, msg, type });
+                    setTimeout(() => toasts.value = toasts.value.filter(t => t.id !== id), 3000);
+                };
+
+                const applyTheme = (nextTheme) => {
+                    theme.value = nextTheme === 'dark' ? 'dark' : 'light';
+                    document.documentElement.setAttribute('data-theme', theme.value);
+                    const lightStyle = document.getElementById('hljs-light');
+                    const darkStyle = document.getElementById('hljs-dark');
+                    if (lightStyle && darkStyle) {
+                        const darkEnabled = theme.value === 'dark';
+                        lightStyle.disabled = darkEnabled;
+                        darkStyle.disabled = !darkEnabled;
+                    }
+                    localStorage.setItem('uiTheme', theme.value);
+                };
+                const toggleTheme = () => applyTheme(theme.value === 'dark' ? 'light' : 'dark');
+                const openGraphWorkspace = () => window.open('/graph-workspace', '_blank', 'noopener,noreferrer');
+
+                const renderMd = (s) => s ? marked.parse(s) : '';
+                const classNameById = (classId) => {
+                    const cls = flatOntologies.value.find(item => item.id == classId);
+                    return cls ? cls.name : `#${classId}`;
+                };
+
+                const fetchAll = async () => {
+                    const [tree, attrs, rels, caps] = await Promise.all([
+                        call('GET', '/api/v1/ontology/tree'),
+                        call('GET', '/api/v1/ontology/data-attributes'),
+                        call('GET', '/api/v1/ontology/object-properties'),
+                        call('GET', '/api/v1/ontology/capabilities')
+                    ]);
+                    if (tree) {
+                        ontologyTree.value = tree.items || [];
+                        const flatten = (nodes) => nodes.reduce((acc, n) => { acc.push(n); if (n.children) acc.push(...flatten(n.children)); return acc; }, []);
+                        flatOntologies.value = flatten(ontologyTree.value);
+                    }
+                    if (attrs) dataAttrs.value = attrs.items || [];
+                    if (rels) objectProps.value = rels.items || [];
+                    if (caps) capabilities.value = caps.items || [];
+                };
+
+                const selectItem = async (item) => {
+                    selectedId.value = item.id;
+                    let path = `/api/v1/ontology/${activeTab.value === 'ontology' ? 'classes' : (activeTab.value === 'data-attr' ? 'data-attributes' : (activeTab.value === 'obj-prop' ? 'object-properties' : 'capabilities'))}/${item.id}`;
+
+                    const fullDetail = await call('GET', path);
+                    if (!fullDetail) { selectedItem.value = item; return; }
+                    
+                    selectedItem.value = fullDetail;
+                    Object.assign(editForm, {
+                        name: fullDetail.name,
+                        description: fullDetail.description || '',
+                        data_type: fullDetail.data_type || 'string',
+                        skill_md: fullDetail.skill_md || '',
+                        directAttrIds: fullDetail.direct_attrs || [],
+                        inheritedAttrIds: fullDetail.inherited_attrs || [],
+                        domain_ids: fullDetail.domain_class_ids || [],
+                        range_ids: fullDetail.range_class_ids || [],
+                        cap_domain_groups: (fullDetail.domain_groups || []).map(group => [...group]),
+                        table_name: fullDetail.table_binding?.table_name || '',
+                        table_schema: fullDetail.table_binding?.table_schema || 'public',
+                        field_mappings: (fullDetail.table_binding?.mappings || []).reduce((acc, m) => { acc[m.data_attribute_id] = m.field_name; return acc; }, {})
+                    });
+                };
+
+                const saveChanges = async () => {
+                    const id = selectedId.value;
+                    const type = activeTab.value;
+                    const payload = { name: editForm.name, description: editForm.description, status: 1 };
+                    if (type === 'data-attr') payload.data_type = editForm.data_type;
+                    if (type === 'obj-prop' || type === 'capability') payload.skill_md = editForm.skill_md;
+                    if (type === 'obj-prop') { payload.domain_class_ids = editForm.domain_ids; payload.range_class_ids = editForm.range_ids; }
+                    if (type === 'capability') payload.domain_groups = (editForm.cap_domain_groups || []).map(group => [...new Set((group || []).map(Number))]);
+
+                    let path = `/api/v1/ontology/${type === 'ontology' ? 'classes' : (type === 'data-attr' ? 'data-attributes' : (type === 'obj-prop' ? 'object-properties' : 'capabilities'))}/${id}`;
+                    
+                    ideLog(`[IDE] Saving ${type} #${id}...`);
+                    const res = await call('PUT', path, payload);
+                    if (res) {
+                        if (type === 'ontology') {
+                            const normalizedDirectAttrIds = [...new Set((editForm.directAttrIds || []).map(v => Number(v)).filter(Number.isInteger))];
+                            ideLog(`[IDE] Binding attributes to class #${id}:`, editForm.directAttrIds);
+                            const bindRes = await call('POST', `/api/v1/ontology/classes/${id}/data-attributes:bind`, { data_attribute_ids: normalizedDirectAttrIds });
+                            if (!bindRes) return;
+                            editForm.directAttrIds = normalizedDirectAttrIds;
+                            
+                            if (editForm.table_name) {
+                                ideLog(`[IDE] Saving table binding for class #${id}...`);
+                                const tableBindingRes = await call('PUT', `/api/v1/ontology/classes/${id}/table-binding`, { table_name: editForm.table_name, table_schema: editForm.table_schema });
+                                if (!tableBindingRes) return;
+                                const boundIds = [...new Set([...editForm.directAttrIds, ...editForm.inheritedAttrIds])];
+                                const mappings = Object.entries(editForm.field_mappings).filter(([attrId, field]) => field && boundIds.includes(Number(attrId))).map(([attrId, field]) => ({ data_attribute_id: Number(attrId), field_name: field }));
+                                if (mappings.length > 0) {
+                                    ideLog(`[IDE] Saving field mappings for class #${id}...`);
+                                    const fieldMappingRes = await call('PUT', `/api/v1/ontology/classes/${id}/table-binding/field-mapping`, { mappings });
+                                    if (!fieldMappingRes) return;
+                                }
+                            }
+                        }
+                        toast('Saved successfully');
+                        await fetchAll();
+                        // Refresh selection to show new bound state
+                        const list = type === 'ontology' ? flatOntologies.value : (type === 'data-attr' ? dataAttrs.value : (type === 'obj-prop' ? objectProps.value : capabilities.value));
+                        const item = list.find(i => i.id == id);
+                        if (item) await selectItem(item);
+                    }
+                };
+
+                const createPhysicalTable = async () => {
+                    if (activeTab.value !== 'ontology' || !selectedId.value) return;
+                    const res = await call('POST', `/api/v1/ontology/classes/${selectedId.value}/table-binding:create-table`);
+                    if (!res) return;
+                    toast(`Table created: ${res.table_name}`);
+                    await fetchAll();
+                    const refreshed = flatOntologies.value.find(item => item.id == selectedId.value);
+                    if (refreshed) await selectItem(refreshed);
+                };
+
+                const openManageDataModal = async () => {
+                    if (activeTab.value !== 'ontology' || !selectedId.value || !editForm.table_name) return;
+                    manageData.page = 1;
+                    manageData.total = 0;
+                    manageData.items = [];
+                    manageData.columns = [];
+                    manageData.filter_field = '';
+                    manageData.filter_op = 'eq';
+                    manageData.filter_value = '';
+                    manageData.sort_field = '';
+                    manageData.sort_order = 'asc';
+                    manageData.new_row = {};
+                    manageData.edit_row = {};
+                    manageData.editing_row_token = '';
+                    document.getElementById('manage_data_modal').showModal();
+                    await queryManageData(1);
+                };
+                const closeManageDataModal = () => document.getElementById('manage_data_modal').close();
+
+                const queryManageData = async (page = 1) => {
+                    if (!selectedId.value) return;
+                    const filters = [];
+                    if (manageData.filter_field && manageData.filter_value !== '') {
+                        filters.push({
+                            field: manageData.filter_field,
+                            op: manageData.filter_op,
+                            value: manageData.filter_op === 'in' ? manageData.filter_value.split(',').map(v => v.trim()).filter(Boolean) : manageData.filter_value
+                        });
+                    }
+                    const payload = {
+                        page: Math.max(1, page),
+                        page_size: manageData.page_size,
+                        filters,
+                        sort_field: manageData.sort_field || null,
+                        sort_order: manageData.sort_order
+                    };
+                    const res = await call('POST', `/api/v1/ontology/classes/${selectedId.value}/table-binding:data:query`, payload);
+                    if (!res) return;
+                    manageData.page = res.page;
+                    manageData.page_size = res.page_size;
+                    manageData.total = res.total;
+                    manageData.columns = res.columns || [];
+                    manageData.items = res.items || [];
+                    if (!manageData.sort_field && manageData.columns.length > 0) manageData.sort_field = manageData.columns[0].field_name;
+                };
+
+                const createManageDataRow = async () => {
+                    if (!selectedId.value || (manageData.columns || []).length === 0) return;
+                    const values = {};
+                    try {
+                        for (const col of manageData.columns) {
+                            if (!(col.field_name in manageData.new_row)) continue;
+                            values[col.field_name] = parseInputValueByType(manageData.new_row[col.field_name], col.data_type);
+                        }
+                    } catch (e) {
+                        return toast(`Invalid input: ${e.message}`, 'error');
+                    }
+                    const res = await call('POST', `/api/v1/ontology/classes/${selectedId.value}/table-binding:data`, { values });
+                    if (!res) return;
+                    manageData.new_row = {};
+                    toast('Row added');
+                    await queryManageData(manageData.page);
+                };
+
+                const startEditDataRow = (row) => {
+                    manageData.editing_row_token = row.__row_token;
+                    manageData.edit_row = {};
+                    for (const col of manageData.columns) {
+                        const value = row[col.field_name];
+                        manageData.edit_row[col.field_name] = typeof value === 'object' && value !== null ? JSON.stringify(value) : (value ?? '');
+                    }
+                };
+                const cancelEditDataRow = () => {
+                    manageData.editing_row_token = '';
+                    manageData.edit_row = {};
+                };
+                const saveEditDataRow = async () => {
+                    if (!selectedId.value || !manageData.editing_row_token) return;
+                    const values = {};
+                    try {
+                        for (const col of manageData.columns) {
+                            if (!(col.field_name in manageData.edit_row)) continue;
+                            values[col.field_name] = parseInputValueByType(manageData.edit_row[col.field_name], col.data_type);
+                        }
+                    } catch (e) {
+                        return toast(`Invalid input: ${e.message}`, 'error');
+                    }
+                    const res = await call('PUT', `/api/v1/ontology/classes/${selectedId.value}/table-binding:data/${encodeURIComponent(manageData.editing_row_token)}`, { values });
+                    if (!res) return;
+                    toast('Row updated');
+                    cancelEditDataRow();
+                    await queryManageData(manageData.page);
+                };
+
+                const deleteSelected = async () => {
+                    const id = selectedId.value;
+                    const type = activeTab.value;
+                    if (!id) return;
+                    const typeName = type === 'ontology' ? 'ontology' : (type === 'data-attr' ? 'data attribute' : (type === 'obj-prop' ? 'object property' : 'capability'));
+                    if (!window.confirm(`Delete this ${typeName}? This action cannot be undone.`)) return;
+                    if (type === 'ontology') {
+                        const confirmInput = window.prompt('二次确认：该操作将物理删除本体及其绑定关系。请输入 DELETE 继续。', '');
+                        if (confirmInput !== 'DELETE') {
+                            toast('已取消删除：二次确认未通过', 'error');
+                            return;
+                        }
+                    }
+
+                    const path = `/api/v1/ontology/${type === 'ontology' ? 'classes' : (type === 'data-attr' ? 'data-attributes' : (type === 'obj-prop' ? 'object-properties' : 'capabilities'))}/${id}`;
+                    const res = await call('DELETE', path);
+                    if (!res) return;
+
+                    toast('Deleted successfully');
+                    selectedId.value = null;
+                    selectedItem.value = null;
+                    await fetchAll();
+                };
+
+                const navigateTo = (tab, id) => {
+                    activeTab.value = tab;
+                    setTimeout(async () => {
+                        const list = tab === 'ontology' ? flatOntologies.value : (tab === 'data-attr' ? dataAttrs.value : (tab === 'obj-prop' ? objectProps.value : capabilities.value));
+                        const item = list.find(i => i.id == id);
+                        if (item) selectItem(item);
+                    }, 100);
+                };
+
+                const openCreateModal = (parent = null) => {
+                    Object.assign(createForm, {
+                        code: '', name: '', description: '', parentCode: parent ? parent.code : '', data_type: 'string',
+                        skill_md: '', domain_ids: [], range_ids: [], cap_domain_groups: []
+                    });
+                    document.getElementById('create_modal').showModal();
+                };
+                const closeCreateModal = () => document.getElementById('create_modal').close();
+
+                const executeCreate = async () => {
+                    const type = activeTab.value;
+                    let path = `/api/v1/ontology/${type === 'ontology' ? 'classes' : (type === 'data-attr' ? 'data-attributes' : (type === 'obj-prop' ? 'object-properties' : 'capabilities'))}`;
+                    const payload = { code: createForm.code, name: createForm.name, description: createForm.description };
+                    if (type === 'data-attr') payload.data_type = createForm.data_type;
+                    if (type === 'obj-prop' || type === 'capability') payload.skill_md = createForm.skill_md;
+                    if (type === 'obj-prop') {
+                        payload.domain_class_ids = [...new Set((createForm.domain_ids || []).map(Number))];
+                        payload.range_class_ids = [...new Set((createForm.range_ids || []).map(Number))];
+                        if (payload.domain_class_ids.length === 0 || payload.range_class_ids.length === 0) {
+                            return toast('Object Property 必须配置 domain 和 range', 'error');
+                        }
+                    }
+                    if (type === 'capability') {
+                        payload.input_schema = { type: 'object', properties: {} };
+                        payload.output_schema = { type: 'object', properties: {} };
+                        payload.domain_groups = (createForm.cap_domain_groups || []).map(group => [...new Set((group || []).map(Number))]).filter(group => group.length > 0);
+                    }
+
+                    const res = await call('POST', path, payload);
+                    if (res) {
+                        if (type === 'ontology' && createForm.parentCode) {
+                            const parent = flatOntologies.value.find(o => o.code === createForm.parentCode);
+                            if (parent) await call('POST', `/api/v1/ontology/classes/${res.id}/inheritance`, { parent_class_id: parent.id });
+                        }
+                        toast('Created successfully');
+                        closeCreateModal();
+                        fetchAll();
+                    }
+                };
+
+                const openAttrPicker = () => {
+                    tempDirectAttrIds.value = [...editForm.directAttrIds];
+                    document.getElementById('attr_picker_modal').showModal();
+                };
+                const closeAttrPicker = () => document.getElementById('attr_picker_modal').close();
+                const confirmAttrPicker = () => {
+                    editForm.directAttrIds = [...new Set((tempDirectAttrIds.value || []).map(v => Number(v)).filter(Number.isInteger))];
+                    closeAttrPicker();
+                };
+                const removeDirectAttr = (id) => {
+                    editForm.directAttrIds = editForm.directAttrIds.filter(bid => bid !== id);
+                };
+
+                const openClassPicker = (target) => {
+                    classPickerTarget.value = target;
+                    classPickerTitle.value = target.includes('range') ? '选择 Range 本体' : '选择 Domain 本体';
+                    if (target === 'obj-domain') classPickerSelection.value = [...(editForm.domain_ids || [])];
+                    else if (target === 'obj-range') classPickerSelection.value = [...(editForm.range_ids || [])];
+                    else if (target === 'create-obj-domain') classPickerSelection.value = [...(createForm.domain_ids || [])];
+                    else if (target === 'create-obj-range') classPickerSelection.value = [...(createForm.range_ids || [])];
+                    document.getElementById('class_picker_modal').showModal();
+                };
+                const closeClassPicker = () => document.getElementById('class_picker_modal').close();
+                const confirmClassPicker = () => {
+                    const normalized = [...new Set((classPickerSelection.value || []).map(Number).filter(Number.isInteger))];
+                    if (classPickerTarget.value === 'obj-domain') editForm.domain_ids = normalized;
+                    else if (classPickerTarget.value === 'obj-range') editForm.range_ids = normalized;
+                    else if (classPickerTarget.value === 'create-obj-domain') createForm.domain_ids = normalized;
+                    else if (classPickerTarget.value === 'create-obj-range') createForm.range_ids = normalized;
+                    closeClassPicker();
+                };
+
+                const openCapabilityDomainGroupModal = (forCreate = false) => {
+                    capDomainForCreate.value = forCreate;
+                    tempCapDomainGroups.value = ((forCreate ? createForm.cap_domain_groups : editForm.cap_domain_groups) || []).map(group => [...group]);
+                    activeTempGroupIndex.value = tempCapDomainGroups.value.length > 0 ? 0 : -1;
+                    document.getElementById('cap_domain_group_modal').showModal();
+                };
+                const closeCapabilityDomainGroupModal = () => document.getElementById('cap_domain_group_modal').close();
+                const addTempCapabilityGroup = () => {
+                    tempCapDomainGroups.value.push([]);
+                    activeTempGroupIndex.value = tempCapDomainGroups.value.length - 1;
+                };
+                const removeTempCapabilityGroup = () => {
+                    if (activeTempGroupIndex.value < 0 || tempCapDomainGroups.value.length === 0) return;
+                    tempCapDomainGroups.value.splice(activeTempGroupIndex.value, 1);
+                    if (tempCapDomainGroups.value.length === 0) activeTempGroupIndex.value = -1;
+                    else if (activeTempGroupIndex.value >= tempCapDomainGroups.value.length) activeTempGroupIndex.value = tempCapDomainGroups.value.length - 1;
+                };
+                const confirmCapabilityDomainGroupModal = () => {
+                    const normalized = tempCapDomainGroups.value
+                        .map(group => [...new Set((group || []).map(Number).filter(Number.isInteger))])
+                        .filter(group => group.length > 0);
+                    if (capDomainForCreate.value) createForm.cap_domain_groups = normalized;
+                    else editForm.cap_domain_groups = normalized;
+                    closeCapabilityDomainGroupModal();
+                };
+
+                const openDetailPreview = async (tab, id) => {
+                    const path = `/api/v1/ontology/${tab === 'ontology' ? 'classes' : (tab === 'data-attr' ? 'data-attributes' : (tab === 'obj-prop' ? 'object-properties' : 'capabilities'))}/${id}`;
+                    const detail = await call('GET', path);
+                    if (!detail) return;
+                    previewModal.tab = tab;
+                    previewModal.id = id;
+                    previewModal.title = tab === 'data-attr' ? 'Data Attribute Detail' : (tab === 'obj-prop' ? 'Object Property Detail' : 'Capability Detail');
+                    previewModal.code = detail.code || '';
+                    previewModal.name = detail.name || '';
+                    previewModal.description = detail.description || '';
+                    document.getElementById('detail_preview_modal').showModal();
+                };
+                const closeDetailPreview = () => document.getElementById('detail_preview_modal').close();
+                const openPreviewInEditor = () => {
+                    closeDetailPreview();
+                    if (!previewModal.tab || !previewModal.id) return;
+                    navigateTo(previewModal.tab, previewModal.id);
+                };
+
+                const onGlobalKeydown = (event) => {
+                    if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 's') return;
+                    if (!selectedItem.value) return;
+                    event.preventDefault();
+                    saveChanges();
+                };
+
+                const changeTab = (tid) => { activeTab.value = tid; selectedId.value = null; selectedItem.value = null; };
+                const owlValidate = () => call('POST', '/api/v1/ontology/owl:validate', { strict: true });
+                const owlExport = () => window.open(`/api/v1/ontology/owl:export?format=ttl&Authorization=${config.token}`, '_blank');
+
+                onMounted(() => {
+                    applyTheme(theme.value);
+                    fetchAll();
+                    window.addEventListener('keydown', onGlobalKeydown);
+                });
+                onBeforeUnmount(() => {
+                    window.removeEventListener('keydown', onGlobalKeydown);
+                });
+                watch(config, () => { localStorage.setItem('tenantId', config.tenantId); localStorage.setItem('token', config.token); });
+
+                return {
+                    tabs, activeTab, currentTabName, currentTabIcon, changeTab,
+                    ontologyTree, flatOntologies, dataAttrs, objectProps, capabilities,
+                    selectedId, selectedItem, editForm, createForm, manageData,
+                    searchQuery, attrSearchQuery, filteredTree, filteredList, filteredAllAttrs, flatClassTreeWithDepth,
+                    boundAttributesList, boundOntologies, selectedItemRelations, selectedItemCapabilities, selectedDomainClasses, selectedRangeClasses,
+                    loading, showLogs, logs, toasts, tempDirectAttrIds, classPickerTitle, classPickerSelection, tempCapDomainGroups, activeTempGroupIndex, previewModal,
+                    renderMd, selectItem, saveChanges, createPhysicalTable, openManageDataModal, closeManageDataModal, queryManageData, createManageDataRow, startEditDataRow, cancelEditDataRow, saveEditDataRow, navigateTo, classNameById, formatDataCell,
+                    deleteSelected,
+                    openCreateModal, closeCreateModal, executeCreate,
+                    openAttrPicker, closeAttrPicker, confirmAttrPicker, removeDirectAttr,
+                    openClassPicker, closeClassPicker, confirmClassPicker,
+                    openCapabilityDomainGroupModal, closeCapabilityDomainGroupModal, addTempCapabilityGroup, removeTempCapabilityGroup, confirmCapabilityDomainGroupModal,
+                    openDetailPreview, closeDetailPreview, openPreviewInEditor,
+                    owlValidate, owlExport, config,
+                    isDarkTheme, toggleTheme, openGraphWorkspace
+                };
+            }
+        }).mount('#app');
+    </script>
 </body>
 </html>

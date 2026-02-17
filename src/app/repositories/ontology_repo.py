@@ -1,4 +1,4 @@
-from sqlalchemy import and_, select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.orm import Session
 
 from src.app.infra.db import models
@@ -37,6 +37,126 @@ class OntologyRepository:
         for key, value in payload.items():
             if value is not None:
                 setattr(obj, key, value)
+        self.db.flush()
+        return obj
+
+    def delete_class(self, tenant_id: str, class_id: int):
+        # Remove inheritance edges first with direct SQL delete to guarantee FK-safe ordering.
+        self.db.execute(
+            delete(models.OntologyInheritance).where(
+                or_(
+                    models.OntologyInheritance.parent_class_id == class_id,
+                    models.OntologyInheritance.child_class_id == class_id,
+                )
+            )
+        )
+        self.db.flush()
+
+        # Remove class bindings and refs.
+        class_attr_ref_stmt = select(models.OntologyClassDataAttrRef).where(
+            and_(
+                models.OntologyClassDataAttrRef.tenant_id == tenant_id,
+                models.OntologyClassDataAttrRef.class_id == class_id,
+            )
+        )
+        for item in list(self.db.scalars(class_attr_ref_stmt)):
+            self.db.delete(item)
+
+        relation_domain_ref_stmt = select(models.OntologyRelationDomainRef).where(
+            and_(
+                models.OntologyRelationDomainRef.tenant_id == tenant_id,
+                models.OntologyRelationDomainRef.class_id == class_id,
+            )
+        )
+        for item in list(self.db.scalars(relation_domain_ref_stmt)):
+            self.db.delete(item)
+
+        relation_range_ref_stmt = select(models.OntologyRelationRangeRef).where(
+            and_(
+                models.OntologyRelationRangeRef.tenant_id == tenant_id,
+                models.OntologyRelationRangeRef.class_id == class_id,
+            )
+        )
+        for item in list(self.db.scalars(relation_range_ref_stmt)):
+            self.db.delete(item)
+
+        class_cap_ref_stmt = select(models.OntologyClassCapabilityRef).where(
+            and_(
+                models.OntologyClassCapabilityRef.tenant_id == tenant_id,
+                models.OntologyClassCapabilityRef.class_id == class_id,
+            )
+        )
+        for item in list(self.db.scalars(class_cap_ref_stmt)):
+            self.db.delete(item)
+
+        # Remove class knowledge.
+        knowledge_class_stmt = select(models.KnowledgeClass).where(
+            and_(
+                models.KnowledgeClass.tenant_id == tenant_id,
+                models.KnowledgeClass.class_id == class_id,
+            )
+        )
+        for item in list(self.db.scalars(knowledge_class_stmt)):
+            self.db.delete(item)
+
+        # Remove table bindings and dependent field mappings.
+        binding_stmt = select(models.OntologyClassTableBinding).where(
+            and_(
+                models.OntologyClassTableBinding.tenant_id == tenant_id,
+                models.OntologyClassTableBinding.class_id == class_id,
+            )
+        )
+        bindings = list(self.db.scalars(binding_stmt))
+        binding_ids = [item.id for item in bindings]
+        if binding_ids:
+            field_mapping_stmt = select(models.OntologyClassFieldMapping).where(
+                and_(
+                    models.OntologyClassFieldMapping.tenant_id == tenant_id,
+                    models.OntologyClassFieldMapping.binding_id.in_(binding_ids),
+                )
+            )
+            for item in list(self.db.scalars(field_mapping_stmt)):
+                self.db.delete(item)
+        for item in bindings:
+            self.db.delete(item)
+
+        # Detach legacy direct links that point to this class.
+        attr_stmt = select(models.OntologyDataAttribute).where(
+            and_(
+                models.OntologyDataAttribute.tenant_id == tenant_id,
+                models.OntologyDataAttribute.class_id == class_id,
+            )
+        )
+        for item in list(self.db.scalars(attr_stmt)):
+            item.class_id = None
+
+        capability_stmt = select(models.OntologyCapability).where(
+            and_(
+                models.OntologyCapability.tenant_id == tenant_id,
+                models.OntologyCapability.class_id == class_id,
+            )
+        )
+        for item in list(self.db.scalars(capability_stmt)):
+            item.class_id = None
+
+        relation_stmt = select(models.OntologyRelation).where(
+            and_(
+                models.OntologyRelation.tenant_id == tenant_id,
+                or_(
+                    models.OntologyRelation.source_class_id == class_id,
+                    models.OntologyRelation.target_class_id == class_id,
+                ),
+            )
+        )
+        for item in list(self.db.scalars(relation_stmt)):
+            if item.source_class_id == class_id:
+                item.source_class_id = None
+            if item.target_class_id == class_id:
+                item.target_class_id = None
+
+        obj = self.get_class(tenant_id, class_id)
+        if obj:
+            self.db.delete(obj)
         self.db.flush()
         return obj
 
@@ -89,6 +209,50 @@ class OntologyRepository:
         )
         return self.db.scalar(stmt)
 
+    def update_attribute(self, obj: models.OntologyDataAttribute, payload: dict):
+        for key, value in payload.items():
+            if value is not None:
+                setattr(obj, key, value)
+        self.db.flush()
+        return obj
+
+    def delete_data_attribute(self, tenant_id: str, attribute_id: int):
+        # Remove class->attribute references
+        class_attr_stmt = select(models.OntologyClassDataAttrRef).where(
+            and_(
+                models.OntologyClassDataAttrRef.tenant_id == tenant_id,
+                models.OntologyClassDataAttrRef.data_attribute_id == attribute_id,
+            )
+        )
+        for item in list(self.db.scalars(class_attr_stmt)):
+            self.db.delete(item)
+
+        # Remove table field mappings by attribute
+        mapping_stmt = select(models.OntologyClassFieldMapping).where(
+            and_(
+                models.OntologyClassFieldMapping.tenant_id == tenant_id,
+                models.OntologyClassFieldMapping.data_attribute_id == attribute_id,
+            )
+        )
+        for item in list(self.db.scalars(mapping_stmt)):
+            self.db.delete(item)
+
+        # Remove attribute knowledge
+        knowledge_stmt = select(models.KnowledgeAttribute).where(
+            and_(
+                models.KnowledgeAttribute.tenant_id == tenant_id,
+                models.KnowledgeAttribute.attribute_id == attribute_id,
+            )
+        )
+        for item in list(self.db.scalars(knowledge_stmt)):
+            self.db.delete(item)
+
+        obj = self.get_attribute(tenant_id, attribute_id)
+        if obj:
+            self.db.delete(obj)
+        self.db.flush()
+        return obj
+
     def bind_class_data_attribute(self, tenant_id: str, class_id: int, data_attribute_id: int):
         stmt = select(models.OntologyClassDataAttrRef).where(
             and_(
@@ -109,6 +273,17 @@ class OntologyRepository:
         self.db.flush()
         return obj
 
+    def clear_class_data_attribute_bindings(self, tenant_id: str, class_id: int):
+        stmt = select(models.OntologyClassDataAttrRef).where(
+            and_(
+                models.OntologyClassDataAttrRef.tenant_id == tenant_id,
+                models.OntologyClassDataAttrRef.class_id == class_id,
+            )
+        )
+        for obj in list(self.db.scalars(stmt)):
+            self.db.delete(obj)
+        self.db.flush()
+
     def list_class_refs_by_attribute_ids(self, tenant_id: str, attribute_ids: list[int]):
         if not attribute_ids:
             return []
@@ -116,6 +291,17 @@ class OntologyRepository:
             and_(
                 models.OntologyClassDataAttrRef.tenant_id == tenant_id,
                 models.OntologyClassDataAttrRef.data_attribute_id.in_(attribute_ids),
+            )
+        )
+        return list(self.db.scalars(stmt))
+
+    def list_class_data_attr_refs_by_class_ids(self, tenant_id: str, class_ids: list[int]):
+        if not class_ids:
+            return []
+        stmt = select(models.OntologyClassDataAttrRef).where(
+            and_(
+                models.OntologyClassDataAttrRef.tenant_id == tenant_id,
+                models.OntologyClassDataAttrRef.class_id.in_(class_ids),
             )
         )
         return list(self.db.scalars(stmt))
@@ -223,11 +409,74 @@ class OntologyRepository:
         )
         return list(self.db.scalars(stmt))
 
+    def clear_relation_domains(self, tenant_id: str, relation_id: int):
+        stmt = select(models.OntologyRelationDomainRef).where(
+            and_(
+                models.OntologyRelationDomainRef.tenant_id == tenant_id,
+                models.OntologyRelationDomainRef.relation_id == relation_id,
+            )
+        )
+        for obj in list(self.db.scalars(stmt)):
+            self.db.delete(obj)
+        self.db.flush()
+
+    def clear_relation_ranges(self, tenant_id: str, relation_id: int):
+        stmt = select(models.OntologyRelationRangeRef).where(
+            and_(
+                models.OntologyRelationRangeRef.tenant_id == tenant_id,
+                models.OntologyRelationRangeRef.relation_id == relation_id,
+            )
+        )
+        for obj in list(self.db.scalars(stmt)):
+            self.db.delete(obj)
+        self.db.flush()
+
     def get_relation(self, tenant_id: str, relation_id: int):
         stmt = select(models.OntologyRelation).where(
             and_(models.OntologyRelation.tenant_id == tenant_id, models.OntologyRelation.id == relation_id)
         )
         return self.db.scalar(stmt)
+
+    def update_relation(self, obj: models.OntologyRelation, payload: dict):
+        for key, value in payload.items():
+            if value is not None:
+                setattr(obj, key, value)
+        self.db.flush()
+        return obj
+
+    def delete_relation(self, tenant_id: str, relation_id: int):
+        domain_stmt = select(models.OntologyRelationDomainRef).where(
+            and_(
+                models.OntologyRelationDomainRef.tenant_id == tenant_id,
+                models.OntologyRelationDomainRef.relation_id == relation_id,
+            )
+        )
+        for item in list(self.db.scalars(domain_stmt)):
+            self.db.delete(item)
+
+        range_stmt = select(models.OntologyRelationRangeRef).where(
+            and_(
+                models.OntologyRelationRangeRef.tenant_id == tenant_id,
+                models.OntologyRelationRangeRef.relation_id == relation_id,
+            )
+        )
+        for item in list(self.db.scalars(range_stmt)):
+            self.db.delete(item)
+
+        knowledge_stmt = select(models.KnowledgeRelationTemplate).where(
+            and_(
+                models.KnowledgeRelationTemplate.tenant_id == tenant_id,
+                models.KnowledgeRelationTemplate.relation_id == relation_id,
+            )
+        )
+        for item in list(self.db.scalars(knowledge_stmt)):
+            self.db.delete(item)
+
+        obj = self.get_relation(tenant_id, relation_id)
+        if obj:
+            self.db.delete(obj)
+        self.db.flush()
+        return obj
 
     def create_capability(self, tenant_id: str, class_id: int | None, payload: dict):
         obj = models.OntologyCapability(tenant_id=tenant_id, class_id=class_id, **payload)
@@ -261,6 +510,8 @@ class OntologyRepository:
     def list_capabilities_by_class_ids(self, tenant_id: str, class_ids: list[int]):
         if not class_ids:
             return []
+        class_id_set = {int(class_id) for class_id in class_ids}
+
         stmt = (
             select(models.OntologyCapability)
             .join(
@@ -274,11 +525,19 @@ class OntologyRepository:
             .where(
                 and_(
                     models.OntologyCapability.tenant_id == tenant_id,
-                    models.OntologyClassCapabilityRef.class_id.in_(class_ids),
+                    models.OntologyClassCapabilityRef.class_id.in_(class_id_set),
                 )
             )
         )
-        return list(self.db.scalars(stmt))
+        refs_caps = list(self.db.scalars(stmt))
+        out_by_id = {cap.id: cap for cap in refs_caps}
+
+        all_caps = self.list_all_capabilities(tenant_id)
+        for cap in all_caps:
+            groups = cap.domain_groups_json or []
+            if any(class_id_set.intersection({int(class_id) for class_id in group or []}) for group in groups):
+                out_by_id[cap.id] = cap
+        return list(out_by_id.values())
 
     def list_all_capabilities(self, tenant_id: str):
         stmt = select(models.OntologyCapability).where(models.OntologyCapability.tenant_id == tenant_id)
@@ -289,6 +548,38 @@ class OntologyRepository:
             and_(models.OntologyCapability.tenant_id == tenant_id, models.OntologyCapability.id == capability_id)
         )
         return self.db.scalar(stmt)
+
+    def update_capability(self, obj: models.OntologyCapability, payload: dict):
+        for key, value in payload.items():
+            if value is not None:
+                setattr(obj, key, value)
+        self.db.flush()
+        return obj
+
+    def delete_capability(self, tenant_id: str, capability_id: int):
+        class_cap_stmt = select(models.OntologyClassCapabilityRef).where(
+            and_(
+                models.OntologyClassCapabilityRef.tenant_id == tenant_id,
+                models.OntologyClassCapabilityRef.capability_id == capability_id,
+            )
+        )
+        for item in list(self.db.scalars(class_cap_stmt)):
+            self.db.delete(item)
+
+        knowledge_stmt = select(models.KnowledgeCapabilityTemplate).where(
+            and_(
+                models.KnowledgeCapabilityTemplate.tenant_id == tenant_id,
+                models.KnowledgeCapabilityTemplate.capability_id == capability_id,
+            )
+        )
+        for item in list(self.db.scalars(knowledge_stmt)):
+            self.db.delete(item)
+
+        obj = self.get_capability(tenant_id, capability_id)
+        if obj:
+            self.db.delete(obj)
+        self.db.flush()
+        return obj
 
     def upsert_class_table_binding(self, tenant_id: str, class_id: int, payload: dict):
         stmt = select(models.OntologyClassTableBinding).where(

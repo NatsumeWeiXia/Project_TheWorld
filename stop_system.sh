@@ -4,15 +4,19 @@ set -euo pipefail
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PID_FILE="$BASE_DIR/.runtime/uvicorn.pid"
 
+log() {
+  printf '[%s] [%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$2"
+}
+
 if [[ ! -f "$PID_FILE" ]]; then
-  echo "[WARN] PID file not found: $PID_FILE"
-  echo "[INFO] Service may already be stopped."
+  log "WARN" "PID file not found: $PID_FILE"
+  log "INFO" "Service may already be stopped."
   exit 0
 fi
 
 PID="$(cat "$PID_FILE" || true)"
 if [[ -z "${PID:-}" ]]; then
-  echo "[ERROR] PID file is empty: $PID_FILE"
+  log "ERROR" "PID file is empty: $PID_FILE"
   exit 1
 fi
 
@@ -27,9 +31,9 @@ if kill -0 "$PID" 2>/dev/null; then
   if kill -0 "$PID" 2>/dev/null; then
     kill -9 "$PID" || true
   fi
-  echo "[OK] Service stopped. PID=$PID"
+  log "OK" "Service stopped. PID=$PID"
 else
-  echo "[WARN] Process not running. PID=$PID"
+  log "WARN" "Process not running. PID=$PID"
 fi
 
 rm -f "$PID_FILE"

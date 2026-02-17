@@ -22,10 +22,18 @@ class CreateInheritanceRequest(BaseModel):
 class CreateGlobalAttributeRequest(BaseModel):
     code: str
     name: str
-    data_type: Literal["string", "int", "date", "boolean", "json"]
+    data_type: Literal["string", "int", "date", "boolean", "json", "array"]
     required: bool = False
     description: str | None = None
     constraints_json: dict = Field(default_factory=dict)
+
+
+class UpdateGlobalAttributeRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    data_type: Literal["string", "int", "date", "boolean", "json", "array"] | None = None
+    required: bool | None = None
+    constraints_json: dict | None = None
 
 
 class CreateObjectPropertyRequest(BaseModel):
@@ -33,10 +41,16 @@ class CreateObjectPropertyRequest(BaseModel):
     name: str
     description: str | None = None
     skill_md: str | None = None
-    relation_type: Literal["transform", "query"]
     domain_class_ids: list[int] = Field(min_length=1)
     range_class_ids: list[int] = Field(min_length=1)
-    mcp_bindings_json: list = Field(default_factory=list)
+
+
+class UpdateObjectPropertyRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    skill_md: str | None = None
+    domain_class_ids: list[int] | None = Field(default=None, min_length=1)
+    range_class_ids: list[int] | None = Field(default=None, min_length=1)
 
 
 class CreateGlobalCapabilityRequest(BaseModel):
@@ -46,11 +60,20 @@ class CreateGlobalCapabilityRequest(BaseModel):
     skill_md: str | None = None
     input_schema: dict
     output_schema: dict
-    mcp_bindings_json: list = Field(default_factory=list)
+    domain_groups: list[list[int]] = Field(default_factory=list)
+
+
+class UpdateGlobalCapabilityRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    skill_md: str | None = None
+    input_schema: dict | None = None
+    output_schema: dict | None = None
+    domain_groups: list[list[int]] | None = None
 
 
 class BindDataAttributesRequest(BaseModel):
-    data_attribute_ids: list[int] = Field(min_length=1)
+    data_attribute_ids: list[int] = Field(default_factory=list)
 
 
 class BindCapabilitiesRequest(BaseModel):
@@ -73,3 +96,19 @@ class UpsertClassFieldMappingRequest(BaseModel):
 
 class OWLValidateRequest(BaseModel):
     strict: bool = False
+
+
+class QueryEntityDataRequest(BaseModel):
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=20, ge=1, le=200)
+    filters: list[dict] = Field(default_factory=list)
+    sort_field: str | None = None
+    sort_order: Literal["asc", "desc"] = "asc"
+
+
+class CreateEntityDataRequest(BaseModel):
+    values: dict = Field(default_factory=dict)
+
+
+class UpdateEntityDataRequest(BaseModel):
+    values: dict = Field(default_factory=dict)

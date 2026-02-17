@@ -34,11 +34,21 @@
 
 ​	**2.7.2 Port：**5432
 
-​	**2.7.3 Database：**gensokyo
+​	**2.7.3 Database for ontology：** // 用来存储元数据，包括：本体、数据属性、对象属性、能力、表映射关系
 
-​	**2.7.4 Username：**akyuu
+​		**2.7.3.1 name:** gensokyo
 
-​	**2.7.5 Password：**akyuu
+​		**2.7.3.2 Username：**akyuu
+
+​		**2.7.3.3 Password：**akyuu
+
+​	**2.7.4 Database for entity：** // 用来存储实体，里面的表和本体一一对应，字段也一一对应
+
+​		**2.7.4.1 name:** memento
+
+​		**2.7.4.2 Username：**akyuu
+
+​		**2.7.4.3 Password：**akyuu
 
 **2.8 Redis：**
 

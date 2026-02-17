@@ -108,6 +108,10 @@ class MCPMetadataService:
             ref.capability_id
             for ref in self.ontology_repo.list_capability_refs_by_class_ids(tenant_id, [class_id])
         }
+        for cap in capabilities:
+            groups = cap.domain_groups_json or []
+            if any(class_id in {int(class_item_id) for class_item_id in (group or [])} for group in groups):
+                direct_capability_ids.add(cap.id)
         table_binding = self.ontology_repo.get_class_table_binding(tenant_id, class_id)
         field_mappings = (
             self.ontology_repo.list_field_mappings(tenant_id, table_binding.id) if table_binding else []

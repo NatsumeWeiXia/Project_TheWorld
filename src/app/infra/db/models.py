@@ -87,6 +87,7 @@ class OntologyCapability(Base):
     input_schema: Mapped[dict] = mapped_column(JSON, nullable=False)
     output_schema: Mapped[dict] = mapped_column(JSON, nullable=False)
     mcp_bindings_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    domain_groups_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now, nullable=False)
 

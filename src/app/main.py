@@ -3,8 +3,9 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from sqlalchemy import inspect, text
 
-from src.app.api.v1 import knowledge, mcp_metadata, ontology
+from src.app.api.v1 import knowledge, mcp_graph, mcp_metadata, ontology
 from src.app.core.config import settings
 from src.app.core.errors import AppError, ErrorCodes
 from src.app.core.response import build_response
@@ -13,6 +14,32 @@ from src.app.infra.db.session import engine
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
 console_html_path = Path(__file__).parent / "ui" / "m1_console.html"
+graph_workspace_html_path = Path(__file__).parent / "ui" / "graph_workspace.html"
+
+
+def _ensure_runtime_schema() -> None:
+    with engine.begin() as conn:
+        inspector = inspect(conn)
+        table_names = set(inspector.get_table_names())
+        if "ontology_capability" not in table_names:
+            return
+        cap_columns = {col["name"] for col in inspector.get_columns("ontology_capability")}
+        if "domain_groups_json" in cap_columns:
+            return
+        if conn.dialect.name == "postgresql":
+            conn.execute(
+                text(
+                    "ALTER TABLE ontology_capability "
+                    "ADD COLUMN domain_groups_json JSON NOT NULL DEFAULT '[]'::json"
+                )
+            )
+        else:
+            conn.execute(
+                text(
+                    "ALTER TABLE ontology_capability "
+                    "ADD COLUMN domain_groups_json JSON NOT NULL DEFAULT '[]'"
+                )
+            )
 
 
 @app.middleware("http")
@@ -38,6 +65,7 @@ async def unknown_error_handler(request: Request, exc: Exception):
 @app.on_event("startup")
 def startup() -> None:
     Base.metadata.create_all(bind=engine)
+    _ensure_runtime_schema()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -57,6 +85,7 @@ def index() -> str:
         </ul>
         <p>OpenAPI: <a href="/docs">/docs</a></p>
         <p>Console: <a href="/m1/console">/m1/console</a></p>
+        <p>Graph Workspace: <a href="/graph-workspace">/graph-workspace</a></p>
       </body>
     </html>
     """
@@ -67,6 +96,12 @@ def m1_console() -> str:
     return console_html_path.read_text(encoding="utf-8")
 
 
+@app.get("/graph-workspace", response_class=HTMLResponse)
+def graph_workspace() -> str:
+    return graph_workspace_html_path.read_text(encoding="utf-8")
+
+
 app.include_router(ontology.router, prefix=settings.api_prefix)
 app.include_router(knowledge.router, prefix=settings.api_prefix)
 app.include_router(mcp_metadata.router, prefix=settings.api_prefix)
+app.include_router(mcp_graph.router, prefix=settings.api_prefix)
