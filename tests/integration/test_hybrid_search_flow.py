@@ -74,20 +74,31 @@ def test_graph_tools_query_uses_hybrid_search(client, headers):
     tool_ontology_resp = client.post(
         "/api/v1/mcp/graph/tools:call",
         headers=headers,
-        json={"name": "graph.list_ontologies", "arguments": {"query": "address"}},
+        json={"name": "graph.list_ontologies", "arguments": {"query": "address", "top_n": 20, "score_gap": 0}},
     )
     assert tool_ontology_resp.status_code == 200
     ontologies = tool_ontology_resp.json()["data"]["content"][0]["json"]
     assert any(item["code"] == "address_entity" for item in ontologies)
+    assert any(isinstance(item.get("score"), (int, float)) for item in ontologies)
 
     tool_attr_resp = client.post(
         "/api/v1/mcp/graph/tools:call",
         headers=headers,
-        json={"name": "graph.list_data_attributes", "arguments": {"query": "address"}},
+        json={"name": "graph.list_data_attributes", "arguments": {"query": "address", "top_n": 20, "score_gap": 0}},
     )
     assert tool_attr_resp.status_code == 200
     attrs = tool_attr_resp.json()["data"]["content"][0]["json"]
     assert any(item["code"] == "customer_address" for item in attrs)
+    assert any(isinstance(item.get("score"), (int, float)) for item in attrs)
+
+    tool_attr_top1_resp = client.post(
+        "/api/v1/mcp/graph/tools:call",
+        headers=headers,
+        json={"name": "graph.list_data_attributes", "arguments": {"query": "address", "top_n": 1, "score_gap": 0}},
+    )
+    assert tool_attr_top1_resp.status_code == 200
+    attrs_top1 = tool_attr_top1_resp.json()["data"]["content"][0]["json"]
+    assert len(attrs_top1) == 1
 
 
 def test_embedding_backfill_api_batches_and_fills_storage(client, headers):

@@ -684,6 +684,17 @@
                     <div class="text-xs font-mono bg-base-200 rounded px-3 py-2">
                         Effective now: sparse {{ effectiveWeightRatio.sparse }} / dense {{ effectiveWeightRatio.dense }}
                     </div>
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">Top-N</span></label>
+                        <input v-model.number="globalSearchConfig.top_n" type="number" min="1" max="500" step="1" class="input input-bordered w-full" />
+                    </div>
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">Score Gap</span></label>
+                        <input v-model.number="globalSearchConfig.score_gap" type="number" min="0" step="0.01" class="input input-bordered w-full" />
+                    </div>
+                    <div class="text-[11px] opacity-60">
+                        Results stop when either Top-N is reached or score drop between adjacent items exceeds Score Gap.
+                    </div>
                     <div class="divider my-1">Embedding Backfill</div>
                     <div class="form-control">
                         <label class="label"><span class="label-text">Batch Size</span></label>
@@ -772,6 +783,8 @@
                 const globalSearchConfig = reactive({
                     w_sparse: Number(localStorage.getItem('hybrid_w_sparse') || '0.45'),
                     w_dense: Number(localStorage.getItem('hybrid_w_dense') || '0.55'),
+                    top_n: Number(localStorage.getItem('hybrid_top_n') || '200'),
+                    score_gap: Number(localStorage.getItem('hybrid_score_gap') || '0'),
                     backfill_batch_size: Number(localStorage.getItem('embedding_backfill_batch_size') || '200'),
                 });
                 const backfillResult = ref(null);
@@ -983,10 +996,13 @@
                         return;
                     }
                     const type = activeTab.value;
+                    const topN = Math.max(1, Math.min(500, Math.floor(Number(globalSearchConfig.top_n) || 200)));
+                    const scoreGap = Math.max(0, Number(globalSearchConfig.score_gap) || 0);
                     const params = new URLSearchParams({
                         q,
                         types: type,
-                        top_k: '200',
+                        top_k: String(topN),
+                        score_gap: String(scoreGap),
                         w_sparse: String(globalSearchConfig.w_sparse),
                         w_dense: String(globalSearchConfig.w_dense),
                     });
@@ -1033,14 +1049,20 @@
                 const saveGlobalConfig = () => {
                     const ws = Number(globalSearchConfig.w_sparse);
                     const wd = Number(globalSearchConfig.w_dense);
+                    const topN = Math.max(1, Math.min(500, Math.floor(Number(globalSearchConfig.top_n) || 200)));
+                    const scoreGap = Math.max(0, Number(globalSearchConfig.score_gap) || 0);
                     if (!Number.isFinite(ws) || !Number.isFinite(wd) || ws < 0 || wd < 0 || (ws + wd) <= 0) {
                         toast('Invalid weights, require non-negative and sum > 0', 'error');
                         return;
                     }
                     globalSearchConfig.w_sparse = Number(ws.toFixed(4));
                     globalSearchConfig.w_dense = Number(wd.toFixed(4));
+                    globalSearchConfig.top_n = topN;
+                    globalSearchConfig.score_gap = Number(scoreGap.toFixed(4));
                     localStorage.setItem('hybrid_w_sparse', String(globalSearchConfig.w_sparse));
                     localStorage.setItem('hybrid_w_dense', String(globalSearchConfig.w_dense));
+                    localStorage.setItem('hybrid_top_n', String(globalSearchConfig.top_n));
+                    localStorage.setItem('hybrid_score_gap', String(globalSearchConfig.score_gap));
                     localStorage.setItem('embedding_backfill_batch_size', String(Math.max(1, Number(globalSearchConfig.backfill_batch_size) || 200)));
                     toast('Global search config saved');
                     closeGlobalConfigModal();

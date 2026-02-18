@@ -142,6 +142,7 @@ class OntologyService:
         query: str,
         resource_types: list[str] | None = None,
         top_k: int = 80,
+        score_gap: float = 0.0,
         w_sparse: float = 0.45,
         w_dense: float = 0.55,
     ) -> dict:
@@ -214,7 +215,15 @@ class OntologyService:
                 }
             )
 
-        scored = HybridRetrievalEngine.score_records(q, records, w_sparse=w_sparse, w_dense=w_dense)[: max(1, top_k)]
+        trigram_sparse = HybridRetrievalEngine.build_pg_trgm_sparse_scores(self.db, q, records)
+        scored = HybridRetrievalEngine.score_records(
+            q,
+            records,
+            w_sparse=w_sparse,
+            w_dense=w_dense,
+            sparse_overrides=trigram_sparse,
+        )
+        scored = HybridRetrievalEngine.apply_top_n_and_gap(scored, top_n=top_k, score_gap=score_gap)
         grouped: dict[str, list[int]] = {"ontology": [], "data-attr": [], "obj-prop": [], "capability": []}
         for item in scored:
             grouped[item["resource_type"]].append(int(item["id"]))

@@ -265,11 +265,19 @@ createApp({
             }
             return { w_sparse: ws, w_dense: wd };
         };
+        const getGlobalSearchLimits = () => {
+            const topN = Number(localStorage.getItem("hybrid_top_n") || "200");
+            const scoreGap = Number(localStorage.getItem("hybrid_score_gap") || "0");
+            const normalizedTopN = Number.isFinite(topN) ? Math.max(1, Math.min(500, Math.floor(topN))) : 200;
+            const normalizedScoreGap = Number.isFinite(scoreGap) ? Math.max(0, scoreGap) : 0;
+            return { top_n: normalizedTopN, score_gap: normalizedScoreGap };
+        };
 
         const loadDataAttributes = async () => {
             const attrs = await mcpCall("graph.list_data_attributes", {
                 query: (search.dataAttributes || "").trim() || undefined,
                 ...getGlobalWeights(),
+                ...getGlobalSearchLimits(),
             });
             dataAttributes.value = attrs || [];
         };
@@ -278,6 +286,7 @@ createApp({
             const classes = await mcpCall("graph.list_ontologies", {
                 query: (search.ontologies || "").trim() || undefined,
                 ...getGlobalWeights(),
+                ...getGlobalSearchLimits(),
             });
             ontologies.value = classes || [];
         };

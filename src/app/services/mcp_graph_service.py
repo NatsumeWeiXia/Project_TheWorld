@@ -23,6 +23,14 @@ class MCPGraphService:
         except (TypeError, ValueError):
             return default
 
+    @staticmethod
+    def _as_positive_int(value, default: int) -> int:
+        try:
+            parsed = int(value)
+            return parsed if parsed > 0 else default
+        except (TypeError, ValueError):
+            return default
+
     def _class_context(self, tenant_id: str):
         classes = self.repo.list_classes(tenant_id, status=1)
         class_by_id = {item.id: item for item in classes}
@@ -100,31 +108,43 @@ class MCPGraphService:
         tenant_id: str,
         query: str | None = None,
         codes: list[str] | None = None,
+        top_n: int = 200,
+        score_gap: float = 0.0,
         w_sparse: float = 0.45,
         w_dense: float = 0.55,
     ):
         code_filter = self._normalize_codes(codes)
         attrs = self.repo.list_all_attributes(tenant_id)
         filtered_attrs = [item for item in attrs if not code_filter or item.code in code_filter]
-        output = [self._build_data_attribute_basic(item) for item in filtered_attrs]
+        output = [{**self._build_data_attribute_basic(item), "score": None} for item in filtered_attrs]
         q = (query or "").strip()
         if q:
+            search_records = [
+                {
+                    "code": item.code,
+                    "search_text": item.search_text or self._to_search_text(item.name, item.code, item.description),
+                    "embedding": item.embedding or [],
+                }
+                for item in filtered_attrs
+            ]
+            trigram_sparse = HybridRetrievalEngine.build_pg_trgm_sparse_scores(self.repo.db, q, search_records)
             scored = HybridRetrievalEngine.score_records(
                 q,
-                [
-                    {
-                        "code": item.code,
-                        "search_text": item.search_text or self._to_search_text(item.name, item.code, item.description),
-                        "embedding": item.embedding or [],
-                    }
-                    for item in filtered_attrs
-                ],
+                search_records,
                 w_sparse=w_sparse,
                 w_dense=w_dense,
+                sparse_overrides=trigram_sparse,
             )
-            rank = {item["code"]: idx for idx, item in enumerate(scored)}
-            output.sort(key=lambda x: (rank.get(x["code"], 10**9), x.get("name") or "", x.get("code") or ""))
-            return output[:200]
+            scored = HybridRetrievalEngine.apply_top_n_and_gap(scored, top_n=top_n, score_gap=score_gap)
+            item_by_code = {item["code"]: item for item in output}
+            ordered = []
+            for row in scored:
+                item = item_by_code.get(row["code"])
+                if not item:
+                    continue
+                item["score"] = row["score"]
+                ordered.append(item)
+            return ordered
         output.sort(key=lambda x: (x["name"] or "", x["code"] or ""))
         return output
 
@@ -133,35 +153,47 @@ class MCPGraphService:
         tenant_id: str,
         query: str | None = None,
         codes: list[str] | None = None,
+        top_n: int = 200,
+        score_gap: float = 0.0,
         w_sparse: float = 0.45,
         w_dense: float = 0.55,
     ):
         code_filter = self._normalize_codes(codes)
         classes, _class_by_id, _class_by_code, parent_code_by_class_id, _parent_ids_by_child_id, _child_ids_by_parent_id = self._class_context(tenant_id)
         output = [
-            self._build_ontology_basic(item, parent_code_by_class_id)
+            {**self._build_ontology_basic(item, parent_code_by_class_id), "score": None}
             for item in classes
             if not code_filter or item.code in code_filter
         ]
         q = (query or "").strip()
         if q:
+            search_records = [
+                {
+                    "code": item.code,
+                    "search_text": item.search_text or self._to_search_text(item.name, item.code, item.description),
+                    "embedding": item.embedding or [],
+                }
+                for item in classes
+                if not code_filter or item.code in code_filter
+            ]
+            trigram_sparse = HybridRetrievalEngine.build_pg_trgm_sparse_scores(self.repo.db, q, search_records)
             scored = HybridRetrievalEngine.score_records(
                 q,
-                [
-                    {
-                        "code": item.code,
-                        "search_text": item.search_text or self._to_search_text(item.name, item.code, item.description),
-                        "embedding": item.embedding or [],
-                    }
-                    for item in classes
-                    if not code_filter or item.code in code_filter
-                ],
+                search_records,
                 w_sparse=w_sparse,
                 w_dense=w_dense,
+                sparse_overrides=trigram_sparse,
             )
-            rank = {item["code"]: idx for idx, item in enumerate(scored)}
-            output.sort(key=lambda x: (rank.get(x["code"], 10**9), x.get("name") or "", x.get("code") or ""))
-            return output[:200]
+            scored = HybridRetrievalEngine.apply_top_n_and_gap(scored, top_n=top_n, score_gap=score_gap)
+            item_by_code = {item["code"]: item for item in output}
+            ordered = []
+            for row in scored:
+                item = item_by_code.get(row["code"])
+                if not item:
+                    continue
+                item["score"] = row["score"]
+                ordered.append(item)
+            return ordered
         output.sort(key=lambda x: (x["name"] or "", x["code"] or ""))
         return output
 
@@ -404,6 +436,8 @@ class MCPGraphService:
                     "properties": {
                         "query": {"type": "string"},
                         "codes": {"type": "array", "items": {"type": "string"}},
+                        "top_n": {"type": "integer", "minimum": 1},
+                        "score_gap": {"type": "number", "minimum": 0},
                         "w_sparse": {"type": "number", "minimum": 0},
                         "w_dense": {"type": "number", "minimum": 0},
                     },
@@ -417,6 +451,8 @@ class MCPGraphService:
                     "properties": {
                         "query": {"type": "string"},
                         "codes": {"type": "array", "items": {"type": "string"}},
+                        "top_n": {"type": "integer", "minimum": 1},
+                        "score_gap": {"type": "number", "minimum": 0},
                         "w_sparse": {"type": "number", "minimum": 0},
                         "w_dense": {"type": "number", "minimum": 0},
                     },
@@ -461,6 +497,8 @@ class MCPGraphService:
                 tenant_id,
                 query=args.get("query"),
                 codes=args.get("codes"),
+                top_n=self._as_positive_int(args.get("top_n"), 200),
+                score_gap=self._as_non_negative_float(args.get("score_gap"), 0.0),
                 w_sparse=self._as_non_negative_float(args.get("w_sparse"), 0.45),
                 w_dense=self._as_non_negative_float(args.get("w_dense"), 0.55),
             )
@@ -469,6 +507,8 @@ class MCPGraphService:
                 tenant_id,
                 query=args.get("query"),
                 codes=args.get("codes"),
+                top_n=self._as_positive_int(args.get("top_n"), 200),
+                score_gap=self._as_non_negative_float(args.get("score_gap"), 0.0),
                 w_sparse=self._as_non_negative_float(args.get("w_sparse"), 0.45),
                 w_dense=self._as_non_negative_float(args.get("w_dense"), 0.55),
             )
