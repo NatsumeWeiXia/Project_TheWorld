@@ -110,6 +110,7 @@ class MCPGraphService:
         codes: list[str] | None = None,
         top_n: int = 200,
         score_gap: float = 0.0,
+        relative_diff: float = 0.0,
         w_sparse: float = 0.45,
         w_dense: float = 0.55,
     ):
@@ -135,7 +136,12 @@ class MCPGraphService:
                 w_dense=w_dense,
                 sparse_overrides=trigram_sparse,
             )
-            scored = HybridRetrievalEngine.apply_top_n_and_gap(scored, top_n=top_n, score_gap=score_gap)
+            scored = HybridRetrievalEngine.apply_top_n_and_gap(
+                scored,
+                top_n=top_n,
+                score_gap=score_gap,
+                relative_diff=relative_diff,
+            )
             item_by_code = {item["code"]: item for item in output}
             ordered = []
             for row in scored:
@@ -155,6 +161,7 @@ class MCPGraphService:
         codes: list[str] | None = None,
         top_n: int = 200,
         score_gap: float = 0.0,
+        relative_diff: float = 0.0,
         w_sparse: float = 0.45,
         w_dense: float = 0.55,
     ):
@@ -184,7 +191,12 @@ class MCPGraphService:
                 w_dense=w_dense,
                 sparse_overrides=trigram_sparse,
             )
-            scored = HybridRetrievalEngine.apply_top_n_and_gap(scored, top_n=top_n, score_gap=score_gap)
+            scored = HybridRetrievalEngine.apply_top_n_and_gap(
+                scored,
+                top_n=top_n,
+                score_gap=score_gap,
+                relative_diff=relative_diff,
+            )
             item_by_code = {item["code"]: item for item in output}
             ordered = []
             for row in scored:
@@ -438,6 +450,7 @@ class MCPGraphService:
                         "codes": {"type": "array", "items": {"type": "string"}},
                         "top_n": {"type": "integer", "minimum": 1},
                         "score_gap": {"type": "number", "minimum": 0},
+                        "relative_diff": {"type": "number", "minimum": 0},
                         "w_sparse": {"type": "number", "minimum": 0},
                         "w_dense": {"type": "number", "minimum": 0},
                     },
@@ -453,6 +466,7 @@ class MCPGraphService:
                         "codes": {"type": "array", "items": {"type": "string"}},
                         "top_n": {"type": "integer", "minimum": 1},
                         "score_gap": {"type": "number", "minimum": 0},
+                        "relative_diff": {"type": "number", "minimum": 0},
                         "w_sparse": {"type": "number", "minimum": 0},
                         "w_dense": {"type": "number", "minimum": 0},
                     },
@@ -493,25 +507,31 @@ class MCPGraphService:
     def call_tool(self, tenant_id: str, tool_name: str, arguments: dict):
         args = arguments or {}
         if tool_name == "graph.list_data_attributes":
-            return self.list_data_attributes(
+            query = (args.get("query") or "").strip()
+            items = self.list_data_attributes(
                 tenant_id,
-                query=args.get("query"),
+                query=query,
                 codes=args.get("codes"),
                 top_n=self._as_positive_int(args.get("top_n"), 200),
                 score_gap=self._as_non_negative_float(args.get("score_gap"), 0.0),
+                relative_diff=self._as_non_negative_float(args.get("relative_diff"), 0.0),
                 w_sparse=self._as_non_negative_float(args.get("w_sparse"), 0.45),
                 w_dense=self._as_non_negative_float(args.get("w_dense"), 0.55),
             )
+            return {"query": query, "items": items}
         if tool_name == "graph.list_ontologies":
-            return self.list_ontologies(
+            query = (args.get("query") or "").strip()
+            items = self.list_ontologies(
                 tenant_id,
-                query=args.get("query"),
+                query=query,
                 codes=args.get("codes"),
                 top_n=self._as_positive_int(args.get("top_n"), 200),
                 score_gap=self._as_non_negative_float(args.get("score_gap"), 0.0),
+                relative_diff=self._as_non_negative_float(args.get("relative_diff"), 0.0),
                 w_sparse=self._as_non_negative_float(args.get("w_sparse"), 0.45),
                 w_dense=self._as_non_negative_float(args.get("w_dense"), 0.55),
             )
+            return {"query": query, "items": items}
         if tool_name == "graph.get_data_attribute_related_ontologies":
             return self.data_attribute_related_ontologies(tenant_id, attribute_codes=args.get("attributeCodes") or [])
         if tool_name == "graph.get_ontology_related_resources":

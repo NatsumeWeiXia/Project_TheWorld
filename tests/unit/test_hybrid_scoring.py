@@ -67,6 +67,16 @@ def test_apply_top_n_and_gap_respects_top_n_limit():
     assert [item["id"] for item in result] == [1, 2]
 
 
+def test_apply_top_n_and_gap_respects_relative_diff_threshold():
+    scored = [
+        {"id": 1, "score": 0.9},
+        {"id": 2, "score": 0.79},
+        {"id": 3, "score": 0.69},
+    ]
+    result = HybridRetrievalEngine.apply_top_n_and_gap(scored, top_n=10, score_gap=1.0, relative_diff=0.8)
+    assert [item["id"] for item in result] == [1, 2]
+
+
 def test_sparse_overrides_take_effect():
     query = "identity"
     data = [

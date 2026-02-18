@@ -43,18 +43,24 @@ class HybridRetrievalEngine:
         scored: list[dict],
         top_n: int,
         score_gap: float = 0.0,
+        relative_diff: float = 0.0,
     ) -> list[dict]:
         limit = max(1, int(top_n))
         gap = max(0.0, float(score_gap))
+        relative = max(0.0, float(relative_diff))
         if not scored:
             return []
 
         output: list[dict] = []
+        max_score = float(scored[0].get("score", 0.0))
+        min_score = max_score * relative
         prev_score = None
         for item in scored:
             if len(output) >= limit:
                 break
             cur_score = float(item.get("score", 0.0))
+            if relative > 0 and cur_score < min_score:
+                break
             if prev_score is not None and gap > 0 and (prev_score - cur_score) >= gap:
                 break
             output.append(item)

@@ -143,6 +143,7 @@ class OntologyService:
         resource_types: list[str] | None = None,
         top_k: int = 80,
         score_gap: float = 0.0,
+        relative_diff: float = 0.0,
         w_sparse: float = 0.45,
         w_dense: float = 0.55,
     ) -> dict:
@@ -223,7 +224,12 @@ class OntologyService:
             w_dense=w_dense,
             sparse_overrides=trigram_sparse,
         )
-        scored = HybridRetrievalEngine.apply_top_n_and_gap(scored, top_n=top_k, score_gap=score_gap)
+        scored = HybridRetrievalEngine.apply_top_n_and_gap(
+            scored,
+            top_n=top_k,
+            score_gap=score_gap,
+            relative_diff=relative_diff,
+        )
         grouped: dict[str, list[int]] = {"ontology": [], "data-attr": [], "obj-prop": [], "capability": []}
         for item in scored:
             grouped[item["resource_type"]].append(int(item["id"]))

@@ -1,204 +1,322 @@
-﻿# Project_TheWorld M2 详细设计文档
+# Project_TheWorld M2 详细设计文档（基于当前 M1 实现）
 
 ## 1. 文档目标
 
-M2 聚焦推理主链路可用化，完成从“用户输入”到“能力执行”的闭环，覆盖：
+在 M1 已完成“本体建模 + 知识管理 + 元数据 MCP + Console/Graph + Hybrid Search”的基础上，M2 目标是补齐“推理引导主链路”能力：
 
-1. LangGraph 主会话编排链路
-2. 歧义识别与澄清回路
-3. 错误恢复（Reflexion）机制
-4. 上下文作用域隔离与回传机制
+1. 从用户输入自动收敛到本体与能力。
+2. 支持澄清、多候选选择、失败恢复。
+3. 提供可追踪的推理执行记录。
+4. 保持与当前单体 FastAPI 工程兼容，避免推倒重来。
 
-## 2. M2 范围定义
+---
 
-### 2.1 In Scope
+## 2. 基线与约束
 
-1. 推理状态机与节点实现（意图识别、能力匹配、执行、收敛）。
-2. Clarification Node（多义意图主动提问）。
-3. Error Recovery Node（失败观测、参数修正、路径重规划、重试）。
-4. Context Scope（Global/Session/Local/Return Artifacts）存储与读写规范。
-5. Tool Registry Top-K 工具筛选与按轮加载。
-6. 推理过程日志埋点与 TraceID 贯穿。
+### 2.1 当前基线（来自 M1）
 
-### 2.2 Out of Scope（M3+）
+1. 已有本体域 CRUD、绑定、OWL、实体表映射、数据管理。
+2. 已有知识模板与 fewshot 管理。
+3. 已有 MCP Metadata 四类接口。
+4. 已有 MCP Graph Tool 与图谱工作台。
+5. 已有 Hybrid Search（score、top_n、gap、relative_diff、pg_trgm 可选）。
+6. 已有 Alembic baseline（`20260218_0001`）。
 
-1. 并行子会话大规模调度。
-2. Data Virtualization（Text-to-SQL/Text-to-Request 统一执行）。
-3. 链路可视化前端画布。
+### 2.2 M2 设计约束
+
+1. 继续采用单体服务（`src/app`）优先，避免提前拆微服务。
+2. M2 默认不引入复杂并行子会话调度（放 M3）。
+3. 所有新增能力必须复用现有 ontology/knowledge/mcp 服务层，避免重复实现。
+
+---
+
+## 3. M2 范围定义
+
+### 3.1 In Scope（本阶段实现目标）
+
+1. 推理编排主链路（单会话、串行任务）。
+2. 意图到本体能力的引导流程（2.2 核心链路）。
+3. 澄清机制（无匹配/多匹配主动提问）。
+4. 错误恢复机制（参数修正、重试、候选路径切换）。
+5. 上下文作用域（global/session/local/artifacts）与持久化。
+6. 推理链路追踪（会话、步骤、MCP 调用、错误事件）。
+7. 系统级数据获取能力补齐（2.1 中“条件查询/分组分析”的统一入口，先覆盖物理表本体）。
+
+### 3.2 Out of Scope（M3+）
+
+1. 多子会话并行与递归编排（2.4 高阶能力）。
+2. 通用 Data Virtualization（Text-to-SQL + Text-to-Request 全模式）。
+3. 图形化链路画布与高级运维看板。
 4. GraphRAG/Re-ranking/检索路由器。
 
-## 3. 技术基线
+---
 
-1. `LangGraph + LangChain`
-2. `FastAPI + Pydantic v2`
-3. `PostgreSQL 16`
-4. `Redis 7`
-5. `Celery`（先用于异步补偿与重试任务，不启用复杂并行 DAG）
-6. `OpenTelemetry`
-
-## 4. 逻辑架构（M2）
+## 4. 目标架构（M2）
 
 ```mermaid
 flowchart LR
-U[User] --> API[FastAPI]
-API --> ORCH[Reasoning Orchestrator]
-ORCH --> TR[Tool Registry]
-ORCH --> MCP[MCP Gateway]
-ORCH --> O[Ontology/Knowledge Metadata]
-ORCH --> SS[Session Service]
-ORCH --> CS[Context Service]
+U[User/API Caller] --> API[FastAPI]
+API --> ORCH[Reasoning Service]
+ORCH --> MM[MCP Metadata Service]
+ORCH --> O[Ontology Service]
+ORCH --> K[Knowledge Service]
+ORCH --> DS[Data Query Service]
 ORCH --> TS[Trace Service]
-SS --> REDIS[(Redis)]
-CS --> REDIS
-TS --> PG[(PostgreSQL)]
+ORCH --> CS[Context Service]
+CS --> DB[(PostgreSQL/SQLite)]
+TS --> DB
+MM --> DB
+O --> DB
+K --> DB
+DS --> EDB[(Entity DB)]
 ```
 
-## 5. 状态模型设计
+设计说明：
+1. `Reasoning Service` 作为 M2 新核心模块，编排已有服务能力。
+2. `Context Service` 与 `Trace Service` 先落库存储（可后续接 Redis/OTel）。
 
-### 5.1 AgentState（M2）
+---
+
+## 5. 推理状态模型
+
+### 5.1 会话状态
+
+1. `created`
+2. `understanding`
+3. `locating`
+4. `planning`
+5. `executing`
+6. `waiting_clarification`
+7. `recovering`
+8. `completed`
+9. `failed`
+
+### 5.2 AgentState（逻辑结构）
 
 ```python
 class AgentState(TypedDict):
-    request_id: str
+    session_id: str
     tenant_id: str
-    user_id: str
-    messages: list[dict]
-    global_context: dict
-    session_context: dict
-    local_context: dict
-    pending_tasks: list[dict]
-    task_stack: list[str]
-    selected_tools: list[dict]
-    clarification_needed: dict | None
-    recovery_state: dict | None
-    return_artifacts: list[dict]
-    final_response: dict | None
+    user_input: str
+    normalized_query: str
+    selected_attributes: list[dict]
+    candidate_ontologies: list[dict]
+    candidate_tasks: list[dict]
+    current_task: dict | None
+    clarification: dict | None
+    recovery: dict | None
+    context_refs: dict
+    final_answer: dict | None
 ```
 
-### 5.2 会话状态机
+---
 
-1. `CREATED`
-2. `UNDERSTANDING`
-3. `PLANNING`
-4. `EXECUTING`
-5. `WAITING_CLARIFICATION`
-6. `RECOVERING`
-7. `COMPLETED`
-8. `FAILED`
+## 6. M2 主链路设计
 
-## 6. LangGraph 节点设计
+### 6.1 流程步骤
 
-1. `N1_InputNormalize`：清洗输入、注入租户与用户上下文。
-2. `N2_IntentExtract`：提取业务意图、实体、约束。
-3. `N3_OntologyLocate`：调用 M1 元数据 MCP 接口定位候选本体与能力。
-4. `N4_ToolSelect`：通过 Tool Registry 返回 Top-K 工具。
-5. `N5_PlanBuild`：形成可执行计划（串行任务列表）。
-6. `N6_ExecuteStep`：执行当前任务（MCP/能力调用）。
-7. `N7_Clarify`：触发澄清问题并等待用户反馈后回流 `N5`。
-8. `N8_Recovery`：失败后读取错误观测并重试或改道。
-9. `N9_Finalize`：生成最终答复与可追踪工件。
+1. 输入规范化（query 清洗、租户校验）。
+2. 属性匹配（调用 `attributes:match`）。
+3. 本体定位（调用 `ontologies:by-attributes`）。
+4. 本体详情拉取（调用 `ontologies/{class_id}`）。
+5. 候选关系/能力筛选（结合知识模板）。
+6. 生成执行计划（串行 task list）。
+7. 执行单任务（元数据/数据查询）。
+8. 成功收敛输出；失败进入恢复；多义进入澄清。
 
-路由规则：
-1. 多义且置信度低于阈值 -> `N7_Clarify`。
-2. 执行报错且可恢复 -> `N8_Recovery`。
-3. 不可恢复或超重试上限 -> `FAILED`。
-4. 全任务完成 -> `N9_Finalize`。
+### 6.2 澄清触发条件
 
-## 7. Context Service 详细设计
+1. 无候选能力（空列表）。
+2. Top1 与 Top2 分值差低于阈值（默认 0.08）。
+3. 必填参数缺失且无法从上下文推导。
 
-### 7.1 作用域约束
+### 6.3 恢复策略
 
-1. `Global Context`：租户配置、用户长期画像，主子会话可读。
-2. `Session Context`：当前主会话共享上下文，跨轮次持久。
-3. `Local Context`：单节点/单轮临时信息，不跨轮持久化。
-4. `Return Artifacts`：可回传父流程的显式工件（结构化结果）。
+1. 参数类型修正（基于 schema）。
+2. 缺参回填（从 session context 提取）。
+3. 重试（最多 2 次，指数退避）。
+4. 切换候选任务。
+5. 最终失败则结构化返回错误原因与建议。
 
-### 7.2 读写策略
+---
 
-1. 节点读取优先级：`Local > Session > Global`。
-2. 节点写入默认：`Local`；需升级必须显式标记 `promote=true`。
-3. Context 压缩触发条件：轮次 > 12 或 token 估计 > 阈值。
-4. 压缩结果必须保留：目标、约束、已完成工件、失败历史摘要。
+## 7. 模块设计（代码增量）
+
+### 7.1 新增模块（建议）
+
+1. `src/app/services/reasoning_service.py`
+2. `src/app/services/context_service.py`
+3. `src/app/services/trace_service.py`
+4. `src/app/api/v1/reasoning.py`
+5. `src/app/schemas/reasoning.py`
+6. `src/app/repositories/reasoning_repo.py`
+
+### 7.2 复用模块
+
+1. `mcp_metadata_service.py`（属性匹配、本体定位、详情、执行细节）
+2. `ontology_service.py`（实体表映射与数据管理能力）
+3. `knowledge_service.py`（关系/能力模板）
+
+---
 
 ## 8. API 设计（M2 新增）
 
-1. `POST /api/v1/reasoning/sessions`
-2. `GET /api/v1/reasoning/sessions/{session_id}`
-3. `POST /api/v1/reasoning/sessions/{session_id}/messages`
-4. `POST /api/v1/reasoning/sessions/{session_id}:clarify`
-5. `POST /api/v1/reasoning/sessions/{session_id}:cancel`
-6. `GET /api/v1/reasoning/sessions/{session_id}/trace`
-7. `POST /api/v1/internal/tool-registry:select`
+前缀：`/api/v1/reasoning`
 
-`/messages` 请求示例：
+1. `POST /sessions`
+   - 创建会话并写入首条输入。
+2. `GET /sessions/{session_id}`
+   - 获取会话状态、当前步骤、最近结果。
+3. `POST /sessions/{session_id}/run`
+   - 执行一次推理轮次（非流式）。
+4. `POST /sessions/{session_id}/clarify`
+   - 提交澄清答案并继续执行。
+5. `GET /sessions/{session_id}/trace`
+   - 返回步骤级链路。
+6. `POST /sessions/{session_id}/cancel`
+   - 取消会话（标记状态）。
 
-```json
-{
-  "content": "帮我定位昨天新增但未授信的企业客户",
-  "stream": false
-}
-```
+补齐系统级数据获取入口（挂在现有 `mcp/metadata` 或新增 `mcp/data`，二选一）：
+1. `POST /api/v1/mcp/data/query`
+2. `POST /api/v1/mcp/data/group-analysis`
 
-`/clarify` 请求示例：
+M2 约束：
+1. 先支持“有物理表映射”的本体查询分析。
+2. 接口绑定与无实体表模式在 M3 扩展。
 
-```json
-{
-  "question_id": "q_001",
-  "answer": "只看华东大区"
-}
-```
+---
 
-## 9. 数据模型（M2 新增）
+## 9. 数据模型设计（M2 新增表）
 
 1. `reasoning_session`
+   - `id, tenant_id, status, created_at, updated_at, ended_at`
 2. `reasoning_turn`
+   - `id, session_id, turn_no, user_input, model_output, status`
 3. `reasoning_task`
-4. `context_snapshot`
-5. `recovery_event`
-6. `return_artifact`
-7. `trace_event`
+   - `id, session_id, turn_id, task_type, task_payload, status, retry_count`
+4. `reasoning_context`
+   - `id, session_id, scope, key, value_json, version`
+5. `reasoning_trace_event`
+   - `id, session_id, turn_id, step, event_type, payload_json, created_at`
+6. `reasoning_clarification`
+   - `id, session_id, question_json, answer_json, status`
 
-关键字段：
-1. `reasoning_session.status`：会话状态。
-2. `reasoning_task.retry_count`：当前任务重试次数。
-3. `context_snapshot.scope`：global/session/local/artifact。
-4. `recovery_event.strategy`：retry/replan/fallback。
-5. `trace_event.span_type`：llm/tool/mcp/context。
+索引建议：
+1. `idx_reasoning_session_tenant_status`
+2. `idx_reasoning_turn_session_turnno`
+3. `idx_reasoning_task_session_status`
+4. `idx_reasoning_trace_session_step`
 
-## 10. 错误恢复机制
+---
 
-1. 重试策略：`max_retry=2`，指数退避 `200ms/800ms`。
-2. 参数修正：基于错误码自动补齐缺失参数或类型修正。
-3. 路径切换：主能力失败时切换候选能力。
-4. 降级策略：无可用能力时返回澄清问题或可执行建议。
-5. 熔断策略：同一工具连续失败超过阈值，当前会话禁用该工具。
+## 10. 上下文作用域规则
 
-## 11. 测试设计
+1. `global`：租户级静态信息（少改动）。
+2. `session`：会话公共语义（跨轮次）。
+3. `local`：当前步骤临时信息。
+4. `artifact`：可回放、可审计的关键结果。
 
-### 11.1 单元测试
+读写规则：
+1. 默认写 `local`。
+2. 需要跨轮次时显式提升至 `session`。
+3. 输出前将关键结果沉淀为 `artifact`。
 
-1. 节点路由条件正确性。
-2. Clarification 触发阈值逻辑。
-3. Recovery 参数修正逻辑。
-4. Context 读写与隔离规则。
+---
 
-### 11.2 集成测试
+## 11. Trace 设计（M2）
 
-1. 输入 -> 定位 -> 执行 -> 输出全链路。
-2. 歧义输入触发澄清并回流执行。
-3. MCP 失败后恢复成功。
-4. 长会话触发压缩后结果一致性。
+### 11.1 事件类型
 
-### 11.3 性能基线（M2 验收）
+1. `intent_parsed`
+2. `attributes_matched`
+3. `ontologies_located`
+4. `task_planned`
+5. `task_executed`
+6. `clarification_asked`
+7. `recovery_triggered`
+8. `session_completed`
+9. `session_failed`
 
-1. 单轮推理 P95 < 2.5s（不含外部慢接口）。
-2. 澄清回路恢复后成功率 > 90%。
-3. Context 压缩耗时 P95 < 200ms。
+### 11.2 追踪字段
 
-## 12. M2 验收清单
+1. `trace_id`（沿用现有响应结构）
+2. `session_id`
+3. `turn_no`
+4. `step_name`
+5. `latency_ms`
+6. `error_code/error_message`
 
-1. 主链路状态机可运行并可观测。
-2. 歧义澄清闭环可用。
-3. 错误恢复机制可重复验证。
-4. 上下文隔离与回传符合作用域约束。
-5. 所有关键接口返回 `trace_id` 与标准错误码。
+---
+
+## 12. 与需求文档对齐说明
+
+对应 `Docs/Project_TheWorld_需求清单.md`：
+
+1. 2.1（系统 MCP，高）：
+   - M1 已完成元数据四接口；
+   - M2 补齐数据查询/分组分析统一入口（先物理表本体）。
+2. 2.2（推理引导框架，高）：
+   - M2 主目标，完成串行可解释闭环。
+3. 2.3（能力动态加载，中）：
+   - M2 提供轻量 tool selection（按本轮候选本体过滤），复杂 registry 治理放 M3。
+4. 2.4/2.5（会话管理、上下文管理，中）：
+   - M2 提供单会话模型与作用域；
+   - 并行子会话、记忆压缩策略深化放 M3。
+5. 2.6（推理链路追踪，高）：
+   - M2 提供事件化 trace 落库和查询接口。
+
+---
+
+## 13. 实施计划（建议）
+
+1. Sprint A：数据表与基础 API（session/turn/context/trace）。
+2. Sprint B：reasoning 主链路（定位、规划、执行、输出）。
+3. Sprint C：澄清与恢复机制。
+4. Sprint D：数据查询/分组分析 MCP 补齐。
+5. Sprint E：联调与回归测试、文档固化。
+
+---
+
+## 14. 测试设计
+
+### 14.1 单元测试
+
+1. 计划生成规则。
+2. 澄清触发判定。
+3. 恢复策略（重试/切换）判定。
+4. 上下文作用域读写。
+
+### 14.2 集成测试
+
+1. 输入 -> 属性匹配 -> 本体定位 -> 执行 -> 输出闭环。
+2. 多候选触发澄清并继续执行。
+3. 执行失败后恢复成功。
+4. Trace 事件完整性与顺序性。
+
+### 14.3 验收指标（M2）
+
+1. 主链路成功率 >= 90%（标准测试集）。
+2. 可恢复错误恢复成功率 >= 80%。
+3. 单轮非外部阻塞执行 P95 < 2500ms。
+4. 每轮均可查询结构化 trace 事件。
+
+---
+
+## 15. 风险与缓解
+
+1. 风险：推理链路过长导致稳定性波动。  
+   缓解：先串行、先短链路、分步上线。
+2. 风险：知识质量影响任务选择。  
+   缓解：增加模板校验与回归样例集。
+3. 风险：接口绑定本体的数据获取能力不完整。  
+   缓解：M2 限定物理表本体，接口模式延后。
+
+---
+
+## 16. M2 Done Definition
+
+1. `reasoning` API 全部可用且有测试覆盖。
+2. 单会话推理主链路可稳定运行。
+3. 澄清与恢复闭环可复现。
+4. trace 可查询并可用于问题定位。
+5. 文档、接口、实现一致。

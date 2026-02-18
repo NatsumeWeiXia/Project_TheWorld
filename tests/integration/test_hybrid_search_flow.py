@@ -77,7 +77,9 @@ def test_graph_tools_query_uses_hybrid_search(client, headers):
         json={"name": "graph.list_ontologies", "arguments": {"query": "address", "top_n": 20, "score_gap": 0}},
     )
     assert tool_ontology_resp.status_code == 200
-    ontologies = tool_ontology_resp.json()["data"]["content"][0]["json"]
+    ontology_payload = tool_ontology_resp.json()["data"]["content"][0]["json"]
+    assert ontology_payload["query"] == "address"
+    ontologies = ontology_payload["items"]
     assert any(item["code"] == "address_entity" for item in ontologies)
     assert any(isinstance(item.get("score"), (int, float)) for item in ontologies)
 
@@ -87,7 +89,9 @@ def test_graph_tools_query_uses_hybrid_search(client, headers):
         json={"name": "graph.list_data_attributes", "arguments": {"query": "address", "top_n": 20, "score_gap": 0}},
     )
     assert tool_attr_resp.status_code == 200
-    attrs = tool_attr_resp.json()["data"]["content"][0]["json"]
+    attr_payload = tool_attr_resp.json()["data"]["content"][0]["json"]
+    assert attr_payload["query"] == "address"
+    attrs = attr_payload["items"]
     assert any(item["code"] == "customer_address" for item in attrs)
     assert any(isinstance(item.get("score"), (int, float)) for item in attrs)
 
@@ -97,7 +101,7 @@ def test_graph_tools_query_uses_hybrid_search(client, headers):
         json={"name": "graph.list_data_attributes", "arguments": {"query": "address", "top_n": 1, "score_gap": 0}},
     )
     assert tool_attr_top1_resp.status_code == 200
-    attrs_top1 = tool_attr_top1_resp.json()["data"]["content"][0]["json"]
+    attrs_top1 = tool_attr_top1_resp.json()["data"]["content"][0]["json"]["items"]
     assert len(attrs_top1) == 1
 
 

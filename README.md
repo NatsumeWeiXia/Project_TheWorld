@@ -42,6 +42,22 @@ pytest -q
 
 测试默认在 `tests/conftest.py` 中强制切换到 `.runtime` 下隔离 SQLite，避免污染共享库。
 
+### 2.4 数据库迁移（Alembic）
+
+已接入 Alembic，配置文件为 `alembic.ini`，迁移目录为 `alembic/versions`。
+
+常用命令：
+
+```bash
+alembic upgrade head
+alembic downgrade -1
+alembic current
+```
+
+说明：
+1. Alembic 使用运行时配置中的数据库地址（`TW_DATABASE_URL` / `.env` / `settings.database_url`）。
+2. 当前已提供 M1 baseline 迁移：`20260218_0001`。
+
 ## 3. 系统分层与调用链
 
 一次典型请求的路径：
@@ -273,7 +289,8 @@ Project_TheWorld/
 
 ## 9. 当前已知工程特征
 
-- `alembic/` 目录当前为空，数据库结构主要由 ORM + 启动逻辑维护。
+- 已接入 Alembic（含 M1 baseline 迁移 `20260218_0001`），后续结构变更建议通过迁移脚本演进。
+- 数据库结构当前仍同时依赖 ORM + 启动期兼容补列逻辑（`main.py` 中 `_ensure_runtime_schema`），建议后续逐步收敛到 Alembic。
 - 运行时会在 `startup` 尝试补齐部分兼容字段（例如 capability 的 `domain_groups_json`）。
 - 控制台前端是单文件页面，改动集中但容易冲突；建议功能拆分时优先抽组件/模块化脚本。
 
@@ -430,3 +447,24 @@ Project_TheWorld/
    - 新增“重置默认权重（0.45/0.55）”按钮。
    - 新增“当前生效比例预览”。
    - 新增“离线回填”触发按钮（调用 `POST /api/v1/ontology/embeddings:backfill`）。
+
+### 10.8 搜索质量与结果展示对齐（本次会话）
+
+1. Hybrid Search 过滤条件增强（后端）：
+   - 在 `top_n` 与 `score_gap` 之外，新增 `relative_diff` 条件。
+   - 三个条件同时生效：`Top-N`、相邻分数断层、以及 `score >= max_score * relative_diff`。
+2. 关键词匹配增强（后端）：
+   - 在 PostgreSQL 场景接入 `pg_trgm` 的 `similarity(query, search_text)` 作为 sparse 分（可回退到原逻辑）。
+   - 需要数据库启用扩展：`CREATE EXTENSION IF NOT EXISTS pg_trgm;`
+3. Global Config 策略增强（前端）：
+   - 拆分为两组权重：
+     - 单词搜索（query token <= 2）：`word_w_sparse/word_w_dense`
+     - 语句搜索（query token > 2）：`sentence_w_sparse/sentence_w_dense`
+   - 新增 `Top-N`、`Score Gap`、`Relative Difference` 全局配置并持久化到 localStorage。
+4. 控制台与图谱搜索结果展示统一：
+   - 搜索结果按接口 score 降序展示。
+   - Ontologies 在“搜索态”使用列表展示（非树），在“非搜索态”保留树形结构。
+   - Console 的 Ontology 树节点支持展开/收起。
+5. MCP Graph Tool 返回结构增强：
+   - `graph.list_data_attributes` / `graph.list_ontologies` 在 `tools:call` 返回中增加 `query` 字段，返回结构为：
+     - `{ "query": "...", "items": [...] }`

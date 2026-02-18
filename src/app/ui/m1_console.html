@@ -96,8 +96,20 @@
                 <div class="flex-1 overflow-auto p-1 py-2">
                     <!-- Ontology Tree -->
                     <div v-if="activeTab === 'ontology'">
-                        <div v-for="node in filteredTree" :key="node.id">
-                            <tree-item :node="node" :active-id="selectedId" @select="selectItem" @add-child="openCreateModal"></tree-item>
+                        <div v-if="showOntologySearchResultList" class="space-y-0.5">
+                            <div v-for="item in filteredOntologyList" :key="item.id"
+                                @click="selectItem(item)"
+                                :class="['px-3 py-2 cursor-pointer rounded flex items-center justify-between group transition-colors', selectedId === item.id ? 'active-item' : 'hover:bg-base-200']">
+                                <div class="flex flex-col">
+                                    <span class="text-sm font-medium">{{ item.name }}</span>
+                                    <span class="text-[10px] font-mono text-gray-500">{{ item.code }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-else>
+                            <div v-for="node in filteredTree" :key="node.id">
+                                <tree-item :node="node" :active-id="selectedId" @select="selectItem" @add-child="openCreateModal"></tree-item>
+                            </div>
                         </div>
                     </div>
                     <!-- Other Lists -->
@@ -668,21 +680,34 @@
         <dialog id="global_config_modal" class="modal">
             <div class="modal-box max-w-md">
                 <h3 class="font-bold text-lg">Global Search Config</h3>
-                <p class="text-xs opacity-70 mt-1 mb-3">Hybrid score weights for keyword and vector retrieval.</p>
+                <p class="text-xs opacity-70 mt-1 mb-3">Search ranking and cutoff rules.</p>
                 <div class="space-y-3">
+                    <div class="divider my-1">单词搜索（query token <= 2）</div>
                     <div class="form-control">
                         <label class="label"><span class="label-text">Keyword Weight (w_sparse)</span></label>
-                        <input v-model.number="globalSearchConfig.w_sparse" type="number" min="0" step="0.01" class="input input-bordered w-full" />
+                        <input v-model.number="globalSearchConfig.word_w_sparse" type="number" min="0" step="0.01" class="input input-bordered w-full" />
                     </div>
                     <div class="form-control">
                         <label class="label"><span class="label-text">Vector Weight (w_dense)</span></label>
-                        <input v-model.number="globalSearchConfig.w_dense" type="number" min="0" step="0.01" class="input input-bordered w-full" />
+                        <input v-model.number="globalSearchConfig.word_w_dense" type="number" min="0" step="0.01" class="input input-bordered w-full" />
+                    </div>
+                    <div class="text-xs font-mono bg-base-200 rounded px-3 py-2">
+                        Effective: sparse {{ effectiveWeightRatioWord.sparse }} / dense {{ effectiveWeightRatioWord.dense }}
+                    </div>
+                    <div class="divider my-1">语句搜索（query token > 2）</div>
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">Keyword Weight (w_sparse)</span></label>
+                        <input v-model.number="globalSearchConfig.sentence_w_sparse" type="number" min="0" step="0.01" class="input input-bordered w-full" />
+                    </div>
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">Vector Weight (w_dense)</span></label>
+                        <input v-model.number="globalSearchConfig.sentence_w_dense" type="number" min="0" step="0.01" class="input input-bordered w-full" />
+                    </div>
+                    <div class="text-xs font-mono bg-base-200 rounded px-3 py-2">
+                        Effective: sparse {{ effectiveWeightRatioSentence.sparse }} / dense {{ effectiveWeightRatioSentence.dense }}
                     </div>
                     <div class="text-[11px] opacity-60">
                         Effective ratio is normalized by backend (w_sparse / (w_sparse + w_dense), w_dense / (w_sparse + w_dense)).
-                    </div>
-                    <div class="text-xs font-mono bg-base-200 rounded px-3 py-2">
-                        Effective now: sparse {{ effectiveWeightRatio.sparse }} / dense {{ effectiveWeightRatio.dense }}
                     </div>
                     <div class="form-control">
                         <label class="label"><span class="label-text">Top-N</span></label>
@@ -692,8 +717,12 @@
                         <label class="label"><span class="label-text">Score Gap</span></label>
                         <input v-model.number="globalSearchConfig.score_gap" type="number" min="0" step="0.01" class="input input-bordered w-full" />
                     </div>
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">Relative Difference</span></label>
+                        <input v-model.number="globalSearchConfig.relative_diff" type="number" min="0" step="0.01" class="input input-bordered w-full" />
+                    </div>
                     <div class="text-[11px] opacity-60">
-                        Results stop when either Top-N is reached or score drop between adjacent items exceeds Score Gap.
+                        Results must satisfy all: Top-N, Score Gap, and score >= max_score * Relative Difference.
                     </div>
                     <div class="divider my-1">Embedding Backfill</div>
                     <div class="form-control">
@@ -710,7 +739,7 @@
                     </div>
                 </div>
                 <div class="modal-action">
-                    <button @click="resetGlobalSearchWeights" class="btn btn-outline">Reset Default 0.45/0.55</button>
+                    <button @click="resetGlobalSearchWeights" class="btn btn-outline">Reset Weight Defaults</button>
                     <button @click="closeGlobalConfigModal" class="btn btn-ghost">Cancel</button>
                     <button @click="saveGlobalConfig" class="btn btn-primary">Save</button>
                 </div>
@@ -736,16 +765,24 @@
             name: 'TreeItem',
             props: ['node', 'activeId'],
             emits: ['select', 'add-child'],
+            setup() {
+                const expanded = ref(false);
+                return { expanded };
+            },
             template: `
                 <div class="tree-node-wrap">
                     <div @click="$emit('select', node)"
                         :class="['px-2 py-1.5 cursor-pointer rounded flex items-center gap-2 group text-sm transition-colors', activeId === node.id ? 'active-item font-bold' : 'hover:bg-base-200']">
+                        <button v-if="node.children && node.children.length" @click.stop="expanded = !expanded" class="w-4 h-4 flex items-center justify-center opacity-60 hover:opacity-100">
+                            <i class="fas fa-xs" :class="expanded ? 'fa-minus-square' : 'fa-plus-square'"></i>
+                        </button>
+                        <span v-else class="w-4"></span>
                         <i v-if="node.children && node.children.length" class="fas fa-folder text-amber-500 opacity-60"></i>
                         <i v-else class="fas fa-cube text-blue-400 opacity-60"></i>
                         <span class="flex-1 truncate">{{ node.name }}</span>
                         <button @click.stop="$emit('add-child', node)" class="opacity-0 group-hover:opacity-100 hover:text-primary"><i class="fas fa-plus-circle text-xs"></i></button>
                     </div>
-                    <div v-if="node.children && node.children.length" class="tree-node">
+                    <div v-if="expanded && node.children && node.children.length" class="tree-node">
                         <tree-item v-for="child in node.children" :key="child.id" :node="child" :active-id="activeId" @select="$emit('select', $event)" @add-child="$emit('add-child', $event)"></tree-item>
                     </div>
                 </div>
@@ -780,11 +817,16 @@
                     tenantId: localStorage.getItem('tenantId') || 'tenant-a',
                     token: localStorage.getItem('token') || 'test-token'
                 });
+                const legacyWSparse = localStorage.getItem('hybrid_w_sparse');
+                const legacyWDense = localStorage.getItem('hybrid_w_dense');
                 const globalSearchConfig = reactive({
-                    w_sparse: Number(localStorage.getItem('hybrid_w_sparse') || '0.45'),
-                    w_dense: Number(localStorage.getItem('hybrid_w_dense') || '0.55'),
+                    word_w_sparse: Number(localStorage.getItem('hybrid_word_w_sparse') || legacyWSparse || '0.45'),
+                    word_w_dense: Number(localStorage.getItem('hybrid_word_w_dense') || legacyWDense || '0.55'),
+                    sentence_w_sparse: Number(localStorage.getItem('hybrid_sentence_w_sparse') || '0.25'),
+                    sentence_w_dense: Number(localStorage.getItem('hybrid_sentence_w_dense') || '0.75'),
                     top_n: Number(localStorage.getItem('hybrid_top_n') || '200'),
                     score_gap: Number(localStorage.getItem('hybrid_score_gap') || '0'),
+                    relative_diff: Number(localStorage.getItem('hybrid_relative_diff') || '0'),
                     backfill_batch_size: Number(localStorage.getItem('embedding_backfill_batch_size') || '200'),
                 });
                 const backfillResult = ref(null);
@@ -798,16 +840,22 @@
 
                 const currentTabName = computed(() => tabs.find(t => t.id === activeTab.value).name);
                 const currentTabIcon = computed(() => tabs.find(t => t.id === activeTab.value).icon);
-                const effectiveWeightRatio = computed(() => {
-                    const ws = Number(globalSearchConfig.w_sparse) || 0;
-                    const wd = Number(globalSearchConfig.w_dense) || 0;
+                const calcEffectiveWeightRatio = (ws, wd) => {
                     const total = ws + wd;
                     if (total <= 0) return { sparse: '0.4500', dense: '0.5500' };
                     return {
                         sparse: (ws / total).toFixed(4),
                         dense: (wd / total).toFixed(4),
                     };
-                });
+                };
+                const effectiveWeightRatioWord = computed(() => calcEffectiveWeightRatio(
+                    Number(globalSearchConfig.word_w_sparse) || 0,
+                    Number(globalSearchConfig.word_w_dense) || 0,
+                ));
+                const effectiveWeightRatioSentence = computed(() => calcEffectiveWeightRatio(
+                    Number(globalSearchConfig.sentence_w_sparse) || 0,
+                    Number(globalSearchConfig.sentence_w_dense) || 0,
+                ));
 
                 const ontologyTree = ref([]);
                 const flatOntologies = ref([]);
@@ -815,6 +863,12 @@
                 const objectProps = ref([]);
                 const capabilities = ref([]);
                 const hybridMatchIds = reactive({
+                    ontology: null,
+                    'data-attr': null,
+                    'obj-prop': null,
+                    capability: null,
+                });
+                const hybridMatchOrder = reactive({
                     ontology: null,
                     'data-attr': null,
                     'obj-prop': null,
@@ -850,6 +904,7 @@
 
                 const filteredTree = computed(() => {
                     if (!submittedSearchQuery.value) return ontologyTree.value;
+                    if (hybridMatchOrder.ontology instanceof Array) return ontologyTree.value;
                     if (hybridMatchIds.ontology instanceof Set) {
                         const filterByIds = (nodes) => (nodes || []).reduce((acc, n) => {
                             const children = filterByIds(n.children || []);
@@ -860,23 +915,42 @@
                         }, []);
                         return filterByIds(ontologyTree.value);
                     }
-                    const filter = (nodes) => nodes.reduce((acc, n) => {
-                        const match = n.name.toLowerCase().includes(submittedSearchQuery.value.toLowerCase()) || n.code.toLowerCase().includes(submittedSearchQuery.value.toLowerCase());
-                        const children = n.children ? filter(n.children) : [];
-                        if (match || children.length) acc.push({ ...n, children });
-                        return acc;
-                    }, []);
-                    return filter(ontologyTree.value);
+                    // Avoid local pre-filter flash; wait for backend hybrid-search result.
+                    return ontologyTree.value;
+                });
+
+                const filteredOntologyList = computed(() => {
+                    let list = flatOntologies.value;
+                    const ordered = hybridMatchOrder.ontology;
+                    const matched = hybridMatchIds.ontology;
+                    if (submittedSearchQuery.value && ordered instanceof Array) {
+                        const byId = new Map(list.map(item => [Number(item.id), item]));
+                        return ordered.map(id => byId.get(Number(id))).filter(Boolean);
+                    }
+                    if (submittedSearchQuery.value && matched instanceof Set) {
+                        list = list.filter(i => matched.has(Number(i.id)));
+                        return list;
+                    }
+                    if (submittedSearchQuery.value) return list;
+                    return list;
+                });
+                const showOntologySearchResultList = computed(() => {
+                    return activeTab.value === 'ontology' && !!submittedSearchQuery.value;
                 });
 
                 const filteredList = computed(() => {
                     let list = activeTab.value === 'data-attr' ? dataAttrs.value : (activeTab.value === 'obj-prop' ? objectProps.value : capabilities.value);
                     const matched = hybridMatchIds[activeTab.value];
+                    const ordered = hybridMatchOrder[activeTab.value];
+                    if (submittedSearchQuery.value && ordered instanceof Array) {
+                        const byId = new Map(list.map(item => [Number(item.id), item]));
+                        return ordered.map(id => byId.get(Number(id))).filter(Boolean);
+                    }
                     if (submittedSearchQuery.value && matched instanceof Set) {
                         list = list.filter(i => matched.has(Number(i.id)));
                         return list;
                     }
-                    if (submittedSearchQuery.value) list = list.filter(i => i.name.toLowerCase().includes(submittedSearchQuery.value.toLowerCase()) || i.code.toLowerCase().includes(submittedSearchQuery.value.toLowerCase()));
+                    if (submittedSearchQuery.value) return list;
                     return list;
                 });
 
@@ -986,6 +1060,29 @@
                     }
                 };
 
+                const countQueryTokens = (query) => {
+                    const q = String(query || '').trim().toLowerCase();
+                    if (!q) return 0;
+                    const spaced = q.split(/\s+/).filter(Boolean);
+                    if (spaced.length > 1) return spaced.length;
+                    const cjk = q.match(/[\u4e00-\u9fff]/g);
+                    if (cjk && cjk.length) return cjk.length;
+                    return 1;
+                };
+                const getWeightsForQuery = (query) => {
+                    const tokenCount = countQueryTokens(query);
+                    if (tokenCount <= 2) {
+                        return {
+                            w_sparse: Number(globalSearchConfig.word_w_sparse),
+                            w_dense: Number(globalSearchConfig.word_w_dense),
+                        };
+                    }
+                    return {
+                        w_sparse: Number(globalSearchConfig.sentence_w_sparse),
+                        w_dense: Number(globalSearchConfig.sentence_w_dense),
+                    };
+                };
+
                 const runHybridSearch = async () => {
                     const q = (submittedSearchQuery.value || '').trim();
                     if (!q) {
@@ -993,18 +1090,27 @@
                         hybridMatchIds['data-attr'] = null;
                         hybridMatchIds['obj-prop'] = null;
                         hybridMatchIds.capability = null;
+                        hybridMatchOrder.ontology = null;
+                        hybridMatchOrder['data-attr'] = null;
+                        hybridMatchOrder['obj-prop'] = null;
+                        hybridMatchOrder.capability = null;
                         return;
                     }
                     const type = activeTab.value;
                     const topN = Math.max(1, Math.min(500, Math.floor(Number(globalSearchConfig.top_n) || 200)));
                     const scoreGap = Math.max(0, Number(globalSearchConfig.score_gap) || 0);
+                    const relativeDiff = Math.max(0, Number(globalSearchConfig.relative_diff) || 0);
+                    const weights = getWeightsForQuery(q);
+                    hybridMatchIds[type] = null;
+                    hybridMatchOrder[type] = null;
                     const params = new URLSearchParams({
                         q,
                         types: type,
                         top_k: String(topN),
                         score_gap: String(scoreGap),
-                        w_sparse: String(globalSearchConfig.w_sparse),
-                        w_dense: String(globalSearchConfig.w_dense),
+                        relative_diff: String(relativeDiff),
+                        w_sparse: String(weights.w_sparse),
+                        w_dense: String(weights.w_dense),
                     });
                     try {
                         const res = await fetch(`/api/v1/ontology/hybrid-search?${params.toString()}`, {
@@ -1014,7 +1120,11 @@
                         const payload = await res.json();
                         if (!res.ok || payload.code !== 0) return;
                         const ids = (((payload.data || {}).grouped || {})[type] || []).map(Number);
+                        const ordered = (((payload.data || {}).items || [])
+                            .filter(item => item.resource_type === type)
+                            .map(item => Number(item.id)));
                         hybridMatchIds[type] = new Set(ids);
+                        hybridMatchOrder[type] = ordered;
                     } catch (_err) {
                         // Keep local fallback filtering when hybrid search request fails.
                     }
@@ -1047,30 +1157,43 @@
                 const openGlobalConfigModal = () => document.getElementById('global_config_modal').showModal();
                 const closeGlobalConfigModal = () => document.getElementById('global_config_modal').close();
                 const saveGlobalConfig = () => {
-                    const ws = Number(globalSearchConfig.w_sparse);
-                    const wd = Number(globalSearchConfig.w_dense);
+                    const wordWS = Number(globalSearchConfig.word_w_sparse);
+                    const wordWD = Number(globalSearchConfig.word_w_dense);
+                    const sentenceWS = Number(globalSearchConfig.sentence_w_sparse);
+                    const sentenceWD = Number(globalSearchConfig.sentence_w_dense);
                     const topN = Math.max(1, Math.min(500, Math.floor(Number(globalSearchConfig.top_n) || 200)));
                     const scoreGap = Math.max(0, Number(globalSearchConfig.score_gap) || 0);
-                    if (!Number.isFinite(ws) || !Number.isFinite(wd) || ws < 0 || wd < 0 || (ws + wd) <= 0) {
-                        toast('Invalid weights, require non-negative and sum > 0', 'error');
+                    const relativeDiff = Math.max(0, Number(globalSearchConfig.relative_diff) || 0);
+                    const isWordWeightValid = Number.isFinite(wordWS) && Number.isFinite(wordWD) && wordWS >= 0 && wordWD >= 0 && (wordWS + wordWD) > 0;
+                    const isSentenceWeightValid = Number.isFinite(sentenceWS) && Number.isFinite(sentenceWD) && sentenceWS >= 0 && sentenceWD >= 0 && (sentenceWS + sentenceWD) > 0;
+                    if (!isWordWeightValid || !isSentenceWeightValid) {
+                        toast('Invalid weights, require non-negative and sum > 0 in both groups', 'error');
                         return;
                     }
-                    globalSearchConfig.w_sparse = Number(ws.toFixed(4));
-                    globalSearchConfig.w_dense = Number(wd.toFixed(4));
+                    globalSearchConfig.word_w_sparse = Number(wordWS.toFixed(4));
+                    globalSearchConfig.word_w_dense = Number(wordWD.toFixed(4));
+                    globalSearchConfig.sentence_w_sparse = Number(sentenceWS.toFixed(4));
+                    globalSearchConfig.sentence_w_dense = Number(sentenceWD.toFixed(4));
                     globalSearchConfig.top_n = topN;
                     globalSearchConfig.score_gap = Number(scoreGap.toFixed(4));
-                    localStorage.setItem('hybrid_w_sparse', String(globalSearchConfig.w_sparse));
-                    localStorage.setItem('hybrid_w_dense', String(globalSearchConfig.w_dense));
+                    globalSearchConfig.relative_diff = Number(relativeDiff.toFixed(4));
+                    localStorage.setItem('hybrid_word_w_sparse', String(globalSearchConfig.word_w_sparse));
+                    localStorage.setItem('hybrid_word_w_dense', String(globalSearchConfig.word_w_dense));
+                    localStorage.setItem('hybrid_sentence_w_sparse', String(globalSearchConfig.sentence_w_sparse));
+                    localStorage.setItem('hybrid_sentence_w_dense', String(globalSearchConfig.sentence_w_dense));
                     localStorage.setItem('hybrid_top_n', String(globalSearchConfig.top_n));
                     localStorage.setItem('hybrid_score_gap', String(globalSearchConfig.score_gap));
+                    localStorage.setItem('hybrid_relative_diff', String(globalSearchConfig.relative_diff));
                     localStorage.setItem('embedding_backfill_batch_size', String(Math.max(1, Number(globalSearchConfig.backfill_batch_size) || 200)));
                     toast('Global search config saved');
                     closeGlobalConfigModal();
                     runHybridSearch();
                 };
                 const resetGlobalSearchWeights = () => {
-                    globalSearchConfig.w_sparse = 0.45;
-                    globalSearchConfig.w_dense = 0.55;
+                    globalSearchConfig.word_w_sparse = 0.45;
+                    globalSearchConfig.word_w_dense = 0.55;
+                    globalSearchConfig.sentence_w_sparse = 0.25;
+                    globalSearchConfig.sentence_w_dense = 0.75;
                 };
                 const triggerEmbeddingBackfill = async () => {
                     const batchSize = Math.max(1, Math.min(5000, Number(globalSearchConfig.backfill_batch_size) || 200));
@@ -1454,7 +1577,7 @@
                     tabs, activeTab, currentTabName, currentTabIcon, changeTab,
                     ontologyTree, flatOntologies, dataAttrs, objectProps, capabilities,
                     selectedId, selectedItem, editForm, createForm, manageData,
-                    searchQuery, attrSearchQuery, filteredTree, filteredList, filteredAllAttrs, flatClassTreeWithDepth,
+                    searchQuery, attrSearchQuery, filteredTree, filteredOntologyList, showOntologySearchResultList, filteredList, filteredAllAttrs, flatClassTreeWithDepth,
                     boundAttributesList, boundOntologies, selectedItemRelations, selectedItemCapabilities, selectedDomainClasses, selectedRangeClasses,
                     loading, showLogs, logs, toasts, tempDirectAttrIds, classPickerTitle, classPickerSelection, tempCapDomainGroups, activeTempGroupIndex, previewModal,
                     renderMd, selectItem, saveChanges, createPhysicalTable, openManageDataModal, closeManageDataModal, queryManageData, createManageDataRow, startEditDataRow, cancelEditDataRow, saveEditDataRow, navigateTo, classNameById, formatDataCell,
@@ -1468,7 +1591,7 @@
                     owlValidate, owlExport, config,
                     isDarkTheme, toggleTheme, openGraphWorkspace,
                     globalSearchConfig, openGlobalConfigModal, closeGlobalConfigModal, saveGlobalConfig,
-                    resetGlobalSearchWeights, effectiveWeightRatio, triggerEmbeddingBackfill, backfillResult
+                    resetGlobalSearchWeights, effectiveWeightRatioWord, effectiveWeightRatioSentence, triggerEmbeddingBackfill, backfillResult
                 };
             }
         }).mount('#app');

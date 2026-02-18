@@ -87,7 +87,16 @@
                         <button class="btn btn-sm btn-outline" @click="searchOntologies">Search</button>
                     </div>
                     <div class="flex-1 overflow-auto pr-1">
-                        <div v-for="node in filteredOntologyTree" :key="'tree-root-'+node.code">
+                        <div v-if="showOntologySearchResultList" class="space-y-1">
+                            <div v-for="item in filteredOntologyList" :key="'ontology-list-'+item.code" class="flex items-center justify-between group px-2 py-1 rounded hover:bg-base-200 transition-colors">
+                                <button class="text-left flex-1 truncate" @click="openDetailModal('ontology', item)">
+                                    <span class="font-semibold text-xs">{{ item.name }}</span>
+                                    <span class="text-[10px] opacity-50 ml-1 font-mono">{{ item.code }}</span>
+                                </button>
+                                <button class="btn btn-xs btn-primary opacity-0 group-hover:opacity-100 h-6 min-h-0 px-2" @click.stop="addResourceToGraph('ontology', item)">Add</button>
+                            </div>
+                        </div>
+                        <div v-else v-for="node in filteredOntologyTree" :key="'tree-root-'+node.code">
                             <ontology-tree-item 
                                 :node="node" 
                                 @add="addResourceToGraph('ontology', $event)" 
@@ -172,6 +181,7 @@ createApp({
         const search = reactive({ dataAttributes: "", ontologies: "" });
         const dataAttributes = ref([]);
         const ontologies = ref([]);
+        const ontologySearchQuery = ref("");
         const detailModal = reactive({ open: false, loading: false, type: "", title: "", code: "", basic: null, detail: null });
 
         const requestCache = new Map();
@@ -223,6 +233,11 @@ createApp({
         const filteredOntologyTree = computed(() => {
             return ontologyTree.value;
         });
+        const showOntologySearchResultList = computed(() => !!(ontologySearchQuery.value || "").trim());
+        const filteredOntologyList = computed(() => {
+            if (!showOntologySearchResultList.value) return [];
+            return ontologies.value;
+        });
 
         const applyTheme = (nextTheme) => {
             theme.value = nextTheme === "dark" ? "dark" : "light";
@@ -257,9 +272,25 @@ createApp({
             return task;
         };
 
-        const getGlobalWeights = () => {
-            const ws = Number(localStorage.getItem("hybrid_w_sparse") || "0.45");
-            const wd = Number(localStorage.getItem("hybrid_w_dense") || "0.55");
+        const countQueryTokens = (query) => {
+            const q = String(query || "").trim().toLowerCase();
+            if (!q) return 0;
+            const spaced = q.split(/\s+/).filter(Boolean);
+            if (spaced.length > 1) return spaced.length;
+            const cjk = q.match(/[\u4e00-\u9fff]/g);
+            if (cjk && cjk.length) return cjk.length;
+            return 1;
+        };
+        const getGlobalWeights = (query) => {
+            const tokenCount = countQueryTokens(query);
+            const legacyWSparse = localStorage.getItem("hybrid_w_sparse");
+            const legacyWDense = localStorage.getItem("hybrid_w_dense");
+            const ws = tokenCount <= 2
+                ? Number(localStorage.getItem("hybrid_word_w_sparse") || legacyWSparse || "0.45")
+                : Number(localStorage.getItem("hybrid_sentence_w_sparse") || "0.25");
+            const wd = tokenCount <= 2
+                ? Number(localStorage.getItem("hybrid_word_w_dense") || legacyWDense || "0.55")
+                : Number(localStorage.getItem("hybrid_sentence_w_dense") || "0.75");
             if (!Number.isFinite(ws) || !Number.isFinite(wd) || ws < 0 || wd < 0 || (ws + wd) <= 0) {
                 return { w_sparse: 0.45, w_dense: 0.55 };
             }
@@ -268,26 +299,33 @@ createApp({
         const getGlobalSearchLimits = () => {
             const topN = Number(localStorage.getItem("hybrid_top_n") || "200");
             const scoreGap = Number(localStorage.getItem("hybrid_score_gap") || "0");
+            const relativeDiff = Number(localStorage.getItem("hybrid_relative_diff") || "0");
             const normalizedTopN = Number.isFinite(topN) ? Math.max(1, Math.min(500, Math.floor(topN))) : 200;
             const normalizedScoreGap = Number.isFinite(scoreGap) ? Math.max(0, scoreGap) : 0;
-            return { top_n: normalizedTopN, score_gap: normalizedScoreGap };
+            const normalizedRelativeDiff = Number.isFinite(relativeDiff) ? Math.max(0, relativeDiff) : 0;
+            return { top_n: normalizedTopN, score_gap: normalizedScoreGap, relative_diff: normalizedRelativeDiff };
         };
 
         const loadDataAttributes = async () => {
-            const attrs = await mcpCall("graph.list_data_attributes", {
-                query: (search.dataAttributes || "").trim() || undefined,
-                ...getGlobalWeights(),
+            const query = (search.dataAttributes || "").trim();
+            const attrsPayload = await mcpCall("graph.list_data_attributes", {
+                query: query || undefined,
+                ...getGlobalWeights(query),
                 ...getGlobalSearchLimits(),
             });
+            const attrs = Array.isArray(attrsPayload) ? attrsPayload : (attrsPayload.items || []);
             dataAttributes.value = attrs || [];
         };
 
         const loadOntologies = async () => {
-            const classes = await mcpCall("graph.list_ontologies", {
-                query: (search.ontologies || "").trim() || undefined,
-                ...getGlobalWeights(),
+            const query = (search.ontologies || "").trim();
+            const classesPayload = await mcpCall("graph.list_ontologies", {
+                query: query || undefined,
+                ...getGlobalWeights(query),
                 ...getGlobalSearchLimits(),
             });
+            ontologySearchQuery.value = String((classesPayload && classesPayload.query) || query || "");
+            const classes = Array.isArray(classesPayload) ? classesPayload : (classesPayload.items || []);
             ontologies.value = classes || [];
         };
 
@@ -725,6 +763,8 @@ createApp({
             prettyDetail,
             filteredDataAttributes,
             filteredOntologyTree,
+            filteredOntologyList,
+            showOntologySearchResultList,
             isDarkTheme,
             toggleTheme,
             reloadResources,

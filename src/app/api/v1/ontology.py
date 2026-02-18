@@ -83,6 +83,7 @@ def hybrid_search(
     types: str = Query("ontology,data-attr,obj-prop,capability"),
     top_k: int = Query(80, ge=1, le=500),
     score_gap: float = Query(0.0, ge=0.0),
+    relative_diff: float = Query(0.0, ge=0.0),
     w_sparse: float = Query(0.45, ge=0.0),
     w_dense: float = Query(0.55, ge=0.0),
     tenant_id: str = Depends(get_tenant_id),
@@ -96,6 +97,7 @@ def hybrid_search(
         wanted or list(allowed),
         top_k=top_k,
         score_gap=score_gap,
+        relative_diff=relative_diff,
         w_sparse=w_sparse,
         w_dense=w_dense,
     )
