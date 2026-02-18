@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from src.app.core.config import settings
 from src.app.core.errors import AppError, ErrorCodes
+from src.app.domain.retrieval.hybrid_engine import HybridRetrievalEngine
 from src.app.repositories.ontology_repo import OntologyRepository
 from src.app.services.embedding_service import EmbeddingService
 
@@ -97,7 +98,20 @@ class OntologyService:
         if self.repo.get_class_by_code(tenant_id, payload["code"]):
             raise AppError(ErrorCodes.CONFLICT, "ontology class code duplicated", status.HTTP_409_CONFLICT)
         try:
-            obj = self.repo.create_class(tenant_id, payload["code"], payload["name"], payload.get("description"))
+            create_payload = self._with_search_embedding(payload)
+            obj = self.repo.create_class(
+                tenant_id,
+                create_payload["code"],
+                create_payload["name"],
+                create_payload.get("description"),
+            )
+            self.repo.update_class(
+                obj,
+                {
+                    "search_text": create_payload["search_text"],
+                    "embedding": create_payload["embedding"],
+                },
+            )
             self.db.commit()
             return obj
         except IntegrityError as exc:
@@ -106,6 +120,182 @@ class OntologyService:
 
     def list_classes(self, tenant_id: str, status_filter: int | None = 1):
         return self.repo.list_classes(tenant_id, status_filter)
+
+    @staticmethod
+    def _search_text(name: str | None, code: str | None, description: str | None) -> str:
+        return " ".join([name or "", code or "", description or ""]).strip()
+
+    def _with_search_embedding(self, payload: dict, default_code: str | None = None) -> dict:
+        next_payload = dict(payload)
+        text = self._search_text(
+            next_payload.get("name"),
+            next_payload.get("code", default_code),
+            next_payload.get("description"),
+        )
+        next_payload["search_text"] = text
+        next_payload["embedding"] = EmbeddingService.embed(text)
+        return next_payload
+
+    def hybrid_search_resources(
+        self,
+        tenant_id: str,
+        query: str,
+        resource_types: list[str] | None = None,
+        top_k: int = 80,
+        w_sparse: float = 0.45,
+        w_dense: float = 0.55,
+    ) -> dict:
+        q = (query or "").strip()
+        if not q:
+            return {
+                "query": "",
+                "items": [],
+                "grouped": {
+                    "ontology": [],
+                    "data-attr": [],
+                    "obj-prop": [],
+                    "capability": [],
+                },
+            }
+
+        type_set = set(resource_types or ["ontology", "data-attr", "obj-prop", "capability"])
+        records: list[dict] = []
+        classes = self.repo.list_classes(tenant_id, status=1) if "ontology" in type_set else []
+        attrs = self.repo.list_all_attributes(tenant_id) if "data-attr" in type_set else []
+        relations = self.repo.list_all_relations(tenant_id) if "obj-prop" in type_set else []
+        caps = self.repo.list_all_capabilities(tenant_id) if "capability" in type_set else []
+
+        for item in classes:
+            records.append(
+                {
+                    "resource_type": "ontology",
+                    "id": item.id,
+                    "code": item.code,
+                    "name": item.name,
+                    "description": item.description,
+                    "search_text": item.search_text or self._search_text(item.name, item.code, item.description),
+                    "embedding": item.embedding or [],
+                }
+            )
+        for item in attrs:
+            records.append(
+                {
+                    "resource_type": "data-attr",
+                    "id": item.id,
+                    "code": item.code,
+                    "name": item.name,
+                    "description": item.description,
+                    "search_text": item.search_text or self._search_text(item.name, item.code, item.description),
+                    "embedding": item.embedding or [],
+                }
+            )
+        for item in relations:
+            records.append(
+                {
+                    "resource_type": "obj-prop",
+                    "id": item.id,
+                    "code": item.code,
+                    "name": item.name,
+                    "description": item.description,
+                    "search_text": item.search_text or self._search_text(item.name, item.code, item.description),
+                    "embedding": item.embedding or [],
+                }
+            )
+        for item in caps:
+            records.append(
+                {
+                    "resource_type": "capability",
+                    "id": item.id,
+                    "code": item.code,
+                    "name": item.name,
+                    "description": item.description,
+                    "search_text": item.search_text or self._search_text(item.name, item.code, item.description),
+                    "embedding": item.embedding or [],
+                }
+            )
+
+        scored = HybridRetrievalEngine.score_records(q, records, w_sparse=w_sparse, w_dense=w_dense)[: max(1, top_k)]
+        grouped: dict[str, list[int]] = {"ontology": [], "data-attr": [], "obj-prop": [], "capability": []}
+        for item in scored:
+            grouped[item["resource_type"]].append(int(item["id"]))
+        return {
+            "query": q,
+            "items": [
+                {
+                    "resource_type": item["resource_type"],
+                    "id": item["id"],
+                    "code": item["code"],
+                    "name": item["name"],
+                    "description": item["description"],
+                    "score": item["score"],
+                }
+                for item in scored
+            ],
+            "grouped": grouped,
+        }
+
+    def backfill_search_embeddings(
+        self,
+        tenant_id: str,
+        resource_types: list[str] | None = None,
+        batch_size: int = 100,
+    ) -> dict:
+        allowed = {"ontology", "obj-prop", "capability"}
+        wanted = [item for item in (resource_types or ["ontology", "obj-prop", "capability"]) if item in allowed]
+        wanted = wanted or ["ontology", "obj-prop", "capability"]
+        remaining = max(int(batch_size), 1)
+
+        updated = {"ontology": 0, "obj-prop": 0, "capability": 0}
+
+        def process_ontology(limit: int) -> int:
+            rows = self.repo.list_classes_missing_search_vector(tenant_id, status=1, limit=limit)
+            for row in rows:
+                merged = self._with_search_embedding({"name": row.name, "code": row.code, "description": row.description})
+                self.repo.update_class(row, {"search_text": merged["search_text"], "embedding": merged["embedding"]})
+            return len(rows)
+
+        def process_relation(limit: int) -> int:
+            rows = self.repo.list_relations_missing_search_vector(tenant_id, limit=limit)
+            for row in rows:
+                merged = self._with_search_embedding({"name": row.name, "code": row.code, "description": row.description})
+                self.repo.update_relation(row, {"search_text": merged["search_text"], "embedding": merged["embedding"]})
+            return len(rows)
+
+        def process_capability(limit: int) -> int:
+            rows = self.repo.list_capabilities_missing_search_vector(tenant_id, limit=limit)
+            for row in rows:
+                merged = self._with_search_embedding({"name": row.name, "code": row.code, "description": row.description})
+                self.repo.update_capability(row, {"search_text": merged["search_text"], "embedding": merged["embedding"]})
+            return len(rows)
+
+        processors = {
+            "ontology": process_ontology,
+            "obj-prop": process_relation,
+            "capability": process_capability,
+        }
+
+        for resource_type in wanted:
+            if remaining <= 0:
+                break
+            count = processors[resource_type](remaining)
+            updated[resource_type] += count
+            remaining -= count
+
+        self.db.commit()
+
+        has_more = {
+            "ontology": len(self.repo.list_classes_missing_search_vector(tenant_id, status=1, limit=1)) > 0,
+            "obj-prop": len(self.repo.list_relations_missing_search_vector(tenant_id, limit=1)) > 0,
+            "capability": len(self.repo.list_capabilities_missing_search_vector(tenant_id, limit=1)) > 0,
+        }
+        return {
+            "batch_size": max(int(batch_size), 1),
+            "resource_types": wanted,
+            "updated": updated,
+            "updated_total": sum(updated.values()),
+            "has_more": has_more,
+            "has_more_any": any(has_more.values()),
+        }
 
     def get_class(self, tenant_id: str, class_id: int):
         obj = self.repo.get_class(tenant_id, class_id)
@@ -182,7 +372,20 @@ class OntologyService:
 
     def update_class(self, tenant_id: str, class_id: int, payload: dict):
         obj = self.get_class(tenant_id, class_id)
-        self.repo.update_class(obj, payload)
+        update_payload = dict(payload)
+        if "name" in update_payload or "description" in update_payload:
+            merged = self._with_search_embedding(
+                {
+                    "name": update_payload.get("name") if update_payload.get("name") is not None else obj.name,
+                    "code": obj.code,
+                    "description": update_payload.get("description")
+                    if update_payload.get("description") is not None
+                    else obj.description,
+                }
+            )
+            update_payload["search_text"] = merged["search_text"]
+            update_payload["embedding"] = merged["embedding"]
+        self.repo.update_class(obj, update_payload)
         self.db.commit()
         return obj
 
@@ -307,14 +510,17 @@ class OntologyService:
         range_ids = payload["range_class_ids"]
         for class_id in set(domain_ids + range_ids):
             self.get_class(tenant_id, class_id)
+        relation_payload = self._with_search_embedding(payload)
         obj = self.repo.create_relation(
             tenant_id=tenant_id,
             source_class_id=domain_ids[0],
             payload={
-                "code": payload["code"],
-                "name": payload["name"],
-                "description": payload.get("description"),
-                "skill_md": payload.get("skill_md"),
+                "code": relation_payload["code"],
+                "name": relation_payload["name"],
+                "description": relation_payload.get("description"),
+                "search_text": relation_payload["search_text"],
+                "embedding": relation_payload["embedding"],
+                "skill_md": relation_payload.get("skill_md"),
                 "relation_type": "query",
                 "target_class_id": range_ids[0],
                 "mcp_bindings_json": [],
@@ -376,6 +582,18 @@ class OntologyService:
             update_payload["target_class_id"] = range_ids[0]
         update_payload.pop("domain_class_ids", None)
         update_payload.pop("range_class_ids", None)
+        if "name" in update_payload or "description" in update_payload:
+            merged = self._with_search_embedding(
+                {
+                    "name": update_payload.get("name") if update_payload.get("name") is not None else obj.name,
+                    "code": obj.code,
+                    "description": update_payload.get("description")
+                    if update_payload.get("description") is not None
+                    else obj.description,
+                }
+            )
+            update_payload["search_text"] = merged["search_text"]
+            update_payload["embedding"] = merged["embedding"]
 
         self.repo.update_relation(obj, update_payload)
 
@@ -398,16 +616,19 @@ class OntologyService:
         for group in normalized_groups:
             for class_id in group:
                 self.get_class(tenant_id, class_id)
+        cap_payload = self._with_search_embedding(payload)
         obj = self.repo.create_capability(
             tenant_id,
             None,
             {
-                "code": payload["code"],
-                "name": payload["name"],
-                "description": payload.get("description"),
-                "skill_md": payload.get("skill_md"),
-                "input_schema": payload["input_schema"],
-                "output_schema": payload["output_schema"],
+                "code": cap_payload["code"],
+                "name": cap_payload["name"],
+                "description": cap_payload.get("description"),
+                "search_text": cap_payload["search_text"],
+                "embedding": cap_payload["embedding"],
+                "skill_md": cap_payload.get("skill_md"),
+                "input_schema": cap_payload["input_schema"],
+                "output_schema": cap_payload["output_schema"],
                 "mcp_bindings_json": [],
                 "domain_groups_json": normalized_groups,
             },
@@ -446,6 +667,18 @@ class OntologyService:
                     self.get_class(tenant_id, class_id)
             update_payload["domain_groups_json"] = normalized
         update_payload.pop("domain_groups", None)
+        if "name" in update_payload or "description" in update_payload:
+            merged = self._with_search_embedding(
+                {
+                    "name": update_payload.get("name") if update_payload.get("name") is not None else obj.name,
+                    "code": obj.code,
+                    "description": update_payload.get("description")
+                    if update_payload.get("description") is not None
+                    else obj.description,
+                }
+            )
+            update_payload["search_text"] = merged["search_text"]
+            update_payload["embedding"] = merged["embedding"]
         self.repo.update_capability(obj, update_payload)
         self.db.commit()
         return obj

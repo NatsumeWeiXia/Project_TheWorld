@@ -15,9 +15,12 @@
         .cy-container { position: relative; height: calc(100vh - 48px); background: radial-gradient(circle at 20% 20%, #eff6ff 0%, #f8fafc 35%, #f1f5f9 100%); }
         [data-theme="dark"] .cy-container { background: radial-gradient(circle at 20% 20%, #111827 0%, #0b1220 35%, #0f172a 100%); }
         #cy { width: 100%; height: 100%; }
-        .tree-node { margin-left: 0.75rem; border-left: 1px solid #cbd5e1; padding-left: 0.5rem; }
+        .tree-node { margin-left: 1rem; border-left: 1px solid #cbd5e1; padding-left: 0.5rem; }
         [data-theme="dark"] .tree-node { border-left-color: #334155; }
         .tooltip-box { position: absolute; z-index: 50; pointer-events: none; max-width: 360px; }
+        .sidebar-section { display: flex; flex-direction: column; overflow: hidden; transition: flex 0.3s ease; }
+        .sidebar-section.expanded { flex: 1; }
+        .sidebar-section.collapsed { flex: 0 0 auto; }
     </style>
 </head>
 <body class="bg-base-100 text-base-content antialiased">
@@ -28,11 +31,12 @@
                 <i class="fas fa-project-diagram text-primary"></i> TheWorld <span class="text-xs opacity-50 font-mono">Graph</span>
             </span>
             <div class="divider divider-horizontal m-0"></div>
-            <span class="text-xs opacity-60 font-mono">/graph-workspace</span>
+            <div class="flex gap-2">
+                <input v-model="config.tenantId" class="input input-xs input-bordered w-32" placeholder="Tenant ID" />
+                <input v-model="config.token" type="password" class="input input-xs input-bordered w-32" placeholder="Token" />
+            </div>
         </div>
         <div class="flex items-center gap-2">
-            <input v-model="config.tenantId" class="input input-xs input-bordered w-32" placeholder="Tenant ID" />
-            <input v-model="config.token" type="password" class="input input-xs input-bordered w-32" placeholder="Token" />
             <button class="btn btn-xs btn-ghost" @click="toggleTheme">{{ isDarkTheme ? "Light" : "Dark" }}</button>
             <button class="btn btn-xs btn-outline" @click="reloadResources">Reload</button>
             <button class="btn btn-xs btn-outline" @click="fitGraph">Fit</button>
@@ -41,45 +45,54 @@
     </header>
 
     <div class="flex flex-1 overflow-hidden">
-        <aside class="w-[380px] border-r bg-base-200 shrink-0 overflow-hidden">
-            <div class="p-3 space-y-3 h-full overflow-hidden">
-                <div class="collapse collapse-arrow bg-base-100" :class="{ 'collapse-open': sections.dataAttributes }">
-                    <input type="checkbox" v-model="sections.dataAttributes" />
-                    <div class="collapse-title font-semibold text-sm">Data Attributes</div>
-                    <div class="collapse-content space-y-2">
-                        <input v-model="search.dataAttributes" class="input input-sm input-bordered w-full" placeholder="Search by name/code" />
-                        <div class="h-64 overflow-auto space-y-1 pr-1">
-                            <div v-for="item in filteredDataAttributes" :key="'attr-'+item.code" class="flex items-center justify-between px-2 py-1 rounded hover:bg-base-200">
-                                <button class="text-left flex-1 truncate" @click="openDetailModal('dataAttribute', item)">
-                                    <span class="font-semibold">{{ item.name }}</span>
-                                    <span class="text-xs opacity-60 ml-1">{{ item.code }}</span>
-                                </button>
-                                <button class="btn btn-xs btn-primary" @click.stop="addResourceToGraph('dataAttribute', item)">Add</button>
-                            </div>
+        <aside class="w-[400px] border-r bg-base-200 shrink-0 flex flex-col overflow-hidden">
+            <!-- Data Attributes Section -->
+            <div class="sidebar-section border-b" :class="sections.dataAttributes ? 'expanded' : 'collapsed'">
+                <div class="flex items-center justify-between px-4 py-2 bg-base-300 cursor-pointer" @click="sections.dataAttributes = !sections.dataAttributes">
+                    <span class="font-bold text-sm flex items-center gap-2">
+                        <i class="fas" :class="sections.dataAttributes ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
+                        Data Attributes
+                    </span>
+                    <span class="badge badge-sm opacity-50">{{ filteredDataAttributes.length }}</span>
+                </div>
+                <div v-show="sections.dataAttributes" class="flex-1 flex flex-col p-3 gap-2 overflow-hidden bg-base-100">
+                    <div class="flex gap-1 shrink-0">
+                        <input v-model="search.dataAttributes" class="input input-sm input-bordered flex-1" placeholder="Search by name/code" />
+                        <button class="btn btn-sm btn-outline" @click="searchDataAttributes">Search</button>
+                    </div>
+                    <div class="flex-1 overflow-auto space-y-1 pr-1">
+                        <div v-for="item in filteredDataAttributes" :key="'attr-'+item.code" class="flex items-center justify-between px-2 py-1 rounded hover:bg-base-200 group">
+                            <button class="text-left flex-1 truncate" @click="openDetailModal('dataAttribute', item)">
+                                <span class="font-semibold text-xs">{{ item.name }}</span>
+                                <span class="text-[10px] opacity-60 ml-1 font-mono">{{ item.code }}</span>
+                            </button>
+                            <button class="btn btn-xs btn-primary opacity-0 group-hover:opacity-100 h-6 min-h-0 px-2" @click.stop="addResourceToGraph('dataAttribute', item)">Add</button>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <div class="collapse collapse-arrow bg-base-100" :class="{ 'collapse-open': sections.ontologies }">
-                    <input type="checkbox" v-model="sections.ontologies" />
-                    <div class="collapse-title font-semibold text-sm">Ontologies</div>
-                    <div class="collapse-content space-y-2">
-                        <input v-model="search.ontologies" class="input input-sm input-bordered w-full" placeholder="Search by name/code" />
-                        <div class="h-64 overflow-auto space-y-1 pr-1">
-                            <div
-                                v-for="item in flattenedOntologyTree"
-                                :key="'tree-'+item.code"
-                                class="flex items-center justify-between gap-2 px-2 py-1 rounded hover:bg-base-200"
-                            >
-                                <div class="flex items-center gap-1 min-w-0 flex-1" :style="{ marginLeft: `${item.depth * 14}px` }">
-                                    <span class="text-xs opacity-50 shrink-0">{{ item.depth > 0 ? "└" : "•" }}</span>
-                                    <button class="text-left flex-1 truncate" @click="openDetailModal('ontology', item)">
-                                        <span class="font-semibold">{{ item.name }}</span>
-                                        <span class="text-xs opacity-60 ml-1">{{ item.code }}</span>
-                                    </button>
-                                </div>
-                                <button class="btn btn-xs btn-primary shrink-0" @click.stop="addResourceToGraph('ontology', item)">Add</button>
-                            </div>
+            <!-- Ontologies Section -->
+            <div class="sidebar-section" :class="sections.ontologies ? 'expanded' : 'collapsed'">
+                <div class="flex items-center justify-between px-4 py-2 bg-base-300 cursor-pointer" @click="sections.ontologies = !sections.ontologies">
+                    <span class="font-bold text-sm flex items-center gap-2">
+                        <i class="fas" :class="sections.ontologies ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
+                        Ontologies
+                    </span>
+                    <span class="badge badge-sm opacity-50">{{ ontologies.length }}</span>
+                </div>
+                <div v-show="sections.ontologies" class="flex-1 flex flex-col p-3 gap-2 overflow-hidden bg-base-100">
+                    <div class="flex gap-1 shrink-0">
+                        <input v-model="search.ontologies" class="input input-sm input-bordered flex-1" placeholder="Search by name/code" />
+                        <button class="btn btn-sm btn-outline" @click="searchOntologies">Search</button>
+                    </div>
+                    <div class="flex-1 overflow-auto pr-1">
+                        <div v-for="node in filteredOntologyTree" :key="'tree-root-'+node.code">
+                            <ontology-tree-item 
+                                :node="node" 
+                                @add="addResourceToGraph('ontology', $event)" 
+                                @detail="openDetailModal('ontology', $event)">
+                            </ontology-tree-item>
                         </div>
                     </div>
                 </div>
@@ -115,7 +128,38 @@
 <script>
 const { createApp, ref, reactive, computed, onMounted } = Vue;
 
+const OntologyTreeItem = {
+    name: 'OntologyTreeItem',
+    props: ['node'],
+    emits: ['add', 'detail'],
+    setup(props) {
+        const expanded = ref(false);
+        return { expanded };
+    },
+    template: `
+        <div class="select-none">
+            <div class="flex items-center justify-between group px-1 py-0.5 rounded hover:bg-base-200 transition-colors">
+                <div class="flex items-center gap-1 flex-1 min-w-0">
+                    <button v-if="node.children && node.children.length" @click.stop="expanded = !expanded" class="w-4 h-4 flex items-center justify-center opacity-50 hover:opacity-100">
+                        <i class="fas fa-xs" :class="expanded ? 'fa-minus-square' : 'fa-plus-square'"></i>
+                    </button>
+                    <span v-else class="w-4"></span>
+                    <button class="text-left flex-1 truncate" @click="$emit('detail', node)">
+                        <span class="font-semibold text-xs">{{ node.name }}</span>
+                        <span class="text-[10px] opacity-50 ml-1 font-mono">{{ node.code }}</span>
+                    </button>
+                </div>
+                <button class="btn btn-xs btn-primary opacity-0 group-hover:opacity-100 h-6 min-h-0 px-2" @click.stop="$emit('add', node)">Add</button>
+            </div>
+            <div v-if="expanded && node.children && node.children.length" class="tree-node">
+                <ontology-tree-item v-for="child in node.children" :key="child.code" :node="child" @add="$emit('add', $event)" @detail="$emit('detail', $event)"></ontology-tree-item>
+            </div>
+        </div>
+    `
+};
+
 createApp({
+    components: { OntologyTreeItem },
     setup() {
         const theme = ref(localStorage.getItem("uiTheme") || "light");
         const isDarkTheme = computed(() => theme.value === "dark");
@@ -143,18 +187,16 @@ createApp({
         let tapTimer = null;
 
         const nodeConfig = {
-            ontology: { shape: "rectangle", color: "#9ca3af", width: 180, height: 62 },
-            dataAttribute: { shape: "ellipse", color: "#fb923c", width: 130, height: 130 },
-            objectProperty: { shape: "rectangle", color: "#6366f1", width: 120, height: 120 },
-            capability: { shape: "rectangle", color: "#fda4af", width: 120, height: 120 },
+            ontology: { shape: "roundrectangle", color: "#3b82f6", width: 220, height: 74, fontSize: 13, textMaxWidth: 170, borderWidth: 4 },
+            dataAttribute: { shape: "ellipse", color: "#f59e0b", width: 72, height: 72, fontSize: 8, textMaxWidth: 80, borderWidth: 2 },
+            objectProperty: { shape: "diamond", color: "#8b5cf6", width: 68, height: 68, fontSize: 8, textMaxWidth: 76, borderWidth: 2 },
+            capability: { shape: "hexagon", color: "#ef4444", width: 68, height: 68, fontSize: 8, textMaxWidth: 76, borderWidth: 2 },
         };
 
         const prettyDetail = computed(() => JSON.stringify(detailModal.detail || {}, null, 2));
 
         const filteredDataAttributes = computed(() => {
-            const q = (search.dataAttributes || "").trim().toLowerCase();
-            if (!q) return dataAttributes.value;
-            return dataAttributes.value.filter(item => (item.name || "").toLowerCase().includes(q) || (item.code || "").toLowerCase().includes(q));
+            return dataAttributes.value;
         });
 
         const ontologyTree = computed(() => {
@@ -179,27 +221,7 @@ createApp({
         });
 
         const filteredOntologyTree = computed(() => {
-            const q = (search.ontologies || "").trim().toLowerCase();
-            if (!q) return ontologyTree.value;
-            const filterNode = (node) => {
-                const children = node.children.map(filterNode).filter(Boolean);
-                const hit = (node.name || "").toLowerCase().includes(q) || (node.code || "").toLowerCase().includes(q);
-                if (!hit && children.length === 0) return null;
-                return { ...node, children };
-            };
-            return ontologyTree.value.map(filterNode).filter(Boolean);
-        });
-
-        const flattenedOntologyTree = computed(() => {
-            const output = [];
-            const walk = (nodes, depth) => {
-                for (const node of nodes || []) {
-                    output.push({ ...node, depth });
-                    walk(node.children || [], depth + 1);
-                }
-            };
-            walk(filteredOntologyTree.value, 0);
-            return output;
+            return ontologyTree.value;
         });
 
         const applyTheme = (nextTheme) => {
@@ -235,19 +257,47 @@ createApp({
             return task;
         };
 
-        const reloadResources = async () => {
-            requestCache.clear();
-            const [attrs, classes] = await Promise.all([
-                mcpCall("graph.list_data_attributes", {}),
-                mcpCall("graph.list_ontologies", {}),
-            ]);
+        const getGlobalWeights = () => {
+            const ws = Number(localStorage.getItem("hybrid_w_sparse") || "0.45");
+            const wd = Number(localStorage.getItem("hybrid_w_dense") || "0.55");
+            if (!Number.isFinite(ws) || !Number.isFinite(wd) || ws < 0 || wd < 0 || (ws + wd) <= 0) {
+                return { w_sparse: 0.45, w_dense: 0.55 };
+            }
+            return { w_sparse: ws, w_dense: wd };
+        };
+
+        const loadDataAttributes = async () => {
+            const attrs = await mcpCall("graph.list_data_attributes", {
+                query: (search.dataAttributes || "").trim() || undefined,
+                ...getGlobalWeights(),
+            });
             dataAttributes.value = attrs || [];
+        };
+
+        const loadOntologies = async () => {
+            const classes = await mcpCall("graph.list_ontologies", {
+                query: (search.ontologies || "").trim() || undefined,
+                ...getGlobalWeights(),
+            });
             ontologies.value = classes || [];
         };
 
+        const reloadResources = async () => {
+            requestCache.clear();
+            await Promise.all([loadDataAttributes(), loadOntologies()]);
+        };
+        const searchDataAttributes = async () => {
+            await loadDataAttributes();
+        };
+        const searchOntologies = async () => {
+            await loadOntologies();
+        };
+
         const initGraph = () => {
+            const cyContainer = document.getElementById("cy");
+            if (!cyContainer) return;
             cy = cytoscape({
-                container: document.getElementById("cy"),
+                container: cyContainer,
                 elements: [],
                 wheelSensitivity: 0.18,
                 style: [
@@ -259,22 +309,23 @@ createApp({
                             "label": "data(label)",
                             "width": "data(width)",
                             "height": "data(height)",
-                            "font-size": 11,
+                            "font-size": "data(fontSize)",
                             "text-wrap": "wrap",
-                            "text-max-width": 140,
+                            "text-max-width": "data(textMaxWidth)",
                             "text-valign": "center",
                             "text-halign": "center",
-                            "font-family": "Segoe UI, PingFang SC, sans-serif",
-                            "font-weight": 700,
-                            "color": "#0f172a",
-                            "border-width": 2,
-                            "border-color": "#334155",
-                            "shadow-blur": 12,
-                            "shadow-color": "rgba(15, 23, 42, 0.25)",
-                            "shadow-opacity": 0.35,
-                            "text-background-color": "rgba(255,255,255,0.6)",
-                            "text-background-opacity": 1,
-                            "text-background-padding": 2,
+                            "font-family": "Inter, Segoe UI, sans-serif",
+                            "font-weight": 600,
+                            "color": "#ffffff",
+                            "text-outline-width": 1,
+                            "text-outline-color": "data(color)",
+                            "border-width": "data(borderWidth)",
+                            "border-color": "#ffffff",
+                            "border-opacity": 0.5,
+                            "shadow-blur": 10,
+                            "shadow-color": "rgba(0,0,0,0.2)",
+                            "shadow-offset-y": 2,
+                            "shadow-opacity": 0.5,
                         },
                     },
                     {
@@ -283,18 +334,19 @@ createApp({
                             "curve-style": "bezier",
                             "line-color": "data(color)",
                             "line-style": "data(lineStyle)",
-                            "width": 1.6,
+                            "width": 2,
                             "target-arrow-shape": "triangle",
                             "target-arrow-color": "data(color)",
-                            "arrow-scale": 0.9,
+                            "arrow-scale": 1,
                             "label": "data(label)",
                             "font-size": 9,
-                            "font-weight": 700,
-                            "text-background-color": "rgba(248,250,252,0.92)",
-                            "text-background-opacity": 1,
+                            "font-weight": 500,
+                            "text-background-color": "#ffffff",
+                            "text-background-opacity": 0.9,
                             "text-background-padding": 2,
-                            "text-margin-y": -8,
-                            "color": "#1e293b",
+                            "text-background-shape": "roundrectangle",
+                            "text-margin-y": -10,
+                            "color": "#475569",
                         },
                     },
                 ],
@@ -425,11 +477,14 @@ createApp({
                     code,
                     name: item.name || code,
                     description: item.description || "",
-                    label: `${item.name || code}\n${code}`,
+                    label: `${item.name || code}\n(${code})`,
                     color: cfg.color,
                     shape: cfg.shape,
                     width: cfg.width,
                     height: cfg.height,
+                    fontSize: cfg.fontSize,
+                    textMaxWidth: cfg.textMaxWidth,
+                    borderWidth: cfg.borderWidth,
                 },
             });
             return true;
@@ -661,10 +716,11 @@ createApp({
             prettyDetail,
             filteredDataAttributes,
             filteredOntologyTree,
-            flattenedOntologyTree,
             isDarkTheme,
             toggleTheme,
             reloadResources,
+            searchDataAttributes,
+            searchOntologies,
             openDetailModal,
             closeDetailModal,
             addFromModal,

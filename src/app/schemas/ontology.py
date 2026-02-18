@@ -112,3 +112,10 @@ class CreateEntityDataRequest(BaseModel):
 
 class UpdateEntityDataRequest(BaseModel):
     values: dict = Field(default_factory=dict)
+
+
+class BackfillEmbeddingsRequest(BaseModel):
+    resource_types: list[Literal["ontology", "obj-prop", "capability"]] = Field(
+        default_factory=lambda: ["ontology", "obj-prop", "capability"]
+    )
+    batch_size: int = Field(default=100, ge=1, le=5000)

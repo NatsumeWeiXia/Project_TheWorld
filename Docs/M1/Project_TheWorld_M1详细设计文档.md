@@ -25,7 +25,7 @@
 - 本体详情查询
 - 关系/能力详情查询
 6. Hybrid Search 检索管道（BM25 + Dense）。
-7. 本体与知识录入管理页面（`/m1/console`）与配套查询接口（Class 列表、Knowledge 最新版本查询）。
+7. 本体与知识录入管理页面（`/theworld/v1/console`）与配套查询接口（Class 列表、Knowledge 最新版本查询）。
 
 ### 2.2 Out of Scope（M2+）
 
@@ -367,7 +367,7 @@ Few-shot 检索参数：
 
 ## 6.4 页面入口（M1 管理台）
 
-1. `GET /m1/console`
+1. `GET /theworld/v1/console`
 2. 页面功能：本体及其属性/关系/能力/绑定录入、知识录入、列表与详情查看。
 
 ## 7. Hybrid Search 详细设计
@@ -469,7 +469,7 @@ tests/
 5. 任务 E：Hybrid Search 引擎实现
 6. 任务 F：4 个 MCP 元数据接口实现
 7. 任务 G：鉴权、租户隔离、中间件
-8. 任务 H：本体与知识录入管理页面实现（`/m1/console`）
+8. 任务 H：本体与知识录入管理页面实现（`/theworld/v1/console`）
 9. 任务 I：测试与性能压测
 
 ## 12. 测试设计

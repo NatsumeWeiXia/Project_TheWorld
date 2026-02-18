@@ -1,5 +1,5 @@
 def test_m1_console_page_accessible(client):
-    resp = client.get("/m1/console")
+    resp = client.get("/theworld/v1/console")
     assert resp.status_code == 200
     assert "本体管理台" in resp.text
 

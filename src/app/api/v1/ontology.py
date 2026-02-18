@@ -6,6 +6,7 @@ from src.app.core.response import build_response
 from src.app.infra.db.session import get_db
 from src.app.schemas.ontology import (
     BindCapabilitiesRequest,
+    BackfillEmbeddingsRequest,
     BindDataAttributesRequest,
     CreateEntityDataRequest,
     CreateClassRequest,
@@ -73,6 +74,30 @@ def delete_class(class_id: int, request: Request, tenant_id: str = Depends(get_t
 def get_tree(request: Request, tenant_id: str = Depends(get_tenant_id), db: Session = Depends(get_db)):
     data = OntologyService(db).get_class_tree(tenant_id)
     return build_response(request, {"items": data})
+
+
+@router.get("/hybrid-search")
+def hybrid_search(
+    request: Request,
+    q: str = Query(""),
+    types: str = Query("ontology,data-attr,obj-prop,capability"),
+    top_k: int = Query(80, ge=1, le=500),
+    w_sparse: float = Query(0.45, ge=0.0),
+    w_dense: float = Query(0.55, ge=0.0),
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db),
+):
+    allowed = {"ontology", "data-attr", "obj-prop", "capability"}
+    wanted = [item.strip() for item in (types or "").split(",") if item.strip() in allowed]
+    data = OntologyService(db).hybrid_search_resources(
+        tenant_id,
+        q,
+        wanted or list(allowed),
+        top_k=top_k,
+        w_sparse=w_sparse,
+        w_dense=w_dense,
+    )
+    return build_response(request, data)
 
 
 @router.post("/classes/{class_id}/inheritance")
@@ -386,6 +411,21 @@ def owl_validate(
     db: Session = Depends(get_db),
 ):
     data = OntologyService(db).owl_validate(tenant_id, strict=req.strict)
+    return build_response(request, data)
+
+
+@router.post("/embeddings:backfill")
+def backfill_embeddings(
+    req: BackfillEmbeddingsRequest,
+    request: Request,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db),
+):
+    data = OntologyService(db).backfill_search_embeddings(
+        tenant_id=tenant_id,
+        resource_types=req.resource_types,
+        batch_size=req.batch_size,
+    )
     return build_response(request, data)
 
 

@@ -18,4 +18,12 @@ def sparse_score(query: str, doc: str) -> float:
 
 
 def hybrid_score(sparse: float, dense: float, w_sparse: float = 0.45, w_dense: float = 0.55) -> float:
-    return w_sparse * sparse + w_dense * dense
+    ws = max(float(w_sparse), 0.0)
+    wd = max(float(w_dense), 0.0)
+    total = ws + wd
+    if total <= 0:
+        ws, wd = 0.45, 0.55
+        total = 1.0
+    ws /= total
+    wd /= total
+    return ws * sparse + wd * dense

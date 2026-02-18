@@ -57,3 +57,27 @@
 ​	**2.8.2 Port：**6379
 
 ​	**2.8.3 Requirepass：**akyuu
+
+**2.9 EmbeddingService：**
+
+​	**2.9.1 Port：**8081
+
+​	**2.9.2 Description：**
+
+```python
+app = FastAPI()
+
+model = SentenceTransformer("BAAI/bge-base-zh", device="cpu")
+
+class Request(BaseModel):
+    texts: list[str]
+
+@app.post("/embed")
+def embed(req: Request):
+    vectors = model.encode(
+        req.texts,
+        batch_size=16,
+        normalize_embeddings=True
+    )
+    return {"embeddings": vectors.tolist()}
+```

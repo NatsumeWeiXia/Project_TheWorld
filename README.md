@@ -1,4 +1,4 @@
-# Project_TheWorld（M1 后端与管理台）
+# Project_TheWorld
 
 本文件用于帮助后续开发者（人或大模型）快速理解工程结构、定位改动入口，避免每次需求变更都做全项目扫描。
 
@@ -9,12 +9,12 @@
 1. 本体管理（Ontology / Data Attribute / Object Property / Capability）
 2. 知识模板管理（class/attribute/relation/capability/fewshot）
 3. MCP 元数据检索能力（属性匹配、本体检索、执行详情）
-4. 管理控制台页面（`/m1/console`）
-5. 知识图谱分析工作空间（`/graph-workspace`）+ MCP Graph Tool 查询
+4. 管理控制台页面（`/theworld/v1/console`）
+5. 知识图谱分析工作空间（`/theworld/v1/console/graph`）+ MCP Graph Tool 查询
 - 当前入口：
 1. API 文档：`/docs`
-2. 控制台：`/m1/console`
-3. 图谱工作空间：`/graph-workspace`
+2. 控制台：`/theworld/v1/console`
+3. 图谱工作空间：`/theworld/v1/console/graph`
 
 ## 2. 运行与测试
 
@@ -56,7 +56,7 @@ pytest -q
 - `src/app/domain/retrieval/*`：检索与评分算法
 - `src/app/ui/m1_console.html`：前端管理台（单文件 Vue 页面）
 
-## 4. 关键领域对象（M1）
+## 4. 关键领域对象
 
 - `OntologyClass`：本体类
 - `OntologyDataAttribute`：数据属性（已支持 `array`）
@@ -137,22 +137,9 @@ Project_TheWorld/
 - `Docs/Project_TheWorld_概要设计文档.md`：总体概要设计
 - `Docs/Project_TheWorld_环境配置.md`：环境部署说明
 - `Docs/本体推理框架技能需求.md`：本体推理与技能需求
-- `Docs/M1/M1_Architecture_Spec.md`：M1 架构说明
-- `Docs/M1/M1_Database_Design.md`：M1 数据库设计
-- `Docs/M1/M1_API_Definition.md`：M1 API 定义
-- `Docs/M1/M1_开发计划.md`：M1 开发计划
 - `Docs/M1/Project_TheWorld_M1详细设计文档.md`：M1 详细设计
-- `Docs/M2/M2_Architecture_Spec.md`：M2 架构说明
-- `Docs/M2/M2_Database_Design.md`：M2 数据库设计
-- `Docs/M2/M2_API_Definition.md`：M2 API 定义
 - `Docs/M2/Project_TheWorld_M2详细设计文档.md`：M2 详细设计
-- `Docs/M3/M3_Architecture_Spec.md`：M3 架构说明
-- `Docs/M3/M3_Database_Design.md`：M3 数据库设计
-- `Docs/M3/M3_API_Definition.md`：M3 API 定义
 - `Docs/M3/Project_TheWorld_M3详细设计文档.md`：M3 详细设计
-- `Docs/M4/M4_Architecture_Spec.md`：M4 架构说明
-- `Docs/M4/M4_Database_Design.md`：M4 数据库设计
-- `Docs/M4/M4_API_Definition.md`：M4 API 定义
 - `Docs/M4/Project_TheWorld_M4详细设计文档.md`：M4 详细设计
 
 ### 7.4 src
@@ -223,10 +210,6 @@ Project_TheWorld/
 - `src/app/ui/m1_console.html`：M1 管理台单页应用（Vue3 + DaisyUI + Tailwind）
 - `src/app/ui/graph_workspace.html`：知识图谱分析工作空间页面（Vue3 + Cytoscape）
 
-#### src/app/workers
-
-- `src/app/workers/embedding_worker.py`：Embedding 异步任务入口（可扩展）
-
 ### 7.5 tests
 
 - `tests/conftest.py`：测试夹具（隔离 SQLite、建表/清表、通用 headers/client）
@@ -257,6 +240,8 @@ Project_TheWorld/
 - Data Attributes：创建/列表/详情/更新/删除/与 class 绑定
 - Object Properties：创建/列表/详情/更新/删除（domain/range）
 - Capabilities：创建/列表/详情/更新/删除（domain groups）
+- Hybrid Search：`GET /api/v1/ontology/hybrid-search`（支持 `w_sparse/w_dense`）
+- Embedding Backfill：`POST /api/v1/ontology/embeddings:backfill`（按批次回填 class/relation/capability 的 `search_text/embedding`）
 - Class DB Mapping：表绑定、字段映射、自动建实体表、实体数据管理（分页/条件/排序/新增/修改）
 - OWL：校验、导出
 
@@ -372,8 +357,8 @@ Project_TheWorld/
 
 #### 10.6.1 页面与入口
 
-1. 在 `m1_console` 右上角主题切换按钮旁新增 `Graph` 按钮，点击后新 TAB 打开 `/graph-workspace`
-2. 新增 `/graph-workspace` 页面，布局为左侧资源栏 + 右侧图谱画布
+1. 在 `m1_console` 右上角主题切换按钮旁新增 `Graph` 按钮，点击后新 TAB 打开 `/theworld/v1/console/graph`
+2. 新增 `/theworld/v1/console/graph` 页面，布局为左侧资源栏 + 右侧图谱画布
 3. 资源栏包含 `Data Attributes` 和 `Ontologies` 分类，支持展开/折叠与按 `name/code` 搜索
 4. 资源项支持：点击查看详情弹窗、`Add to Graph` 添加节点
 
@@ -432,3 +417,16 @@ Project_TheWorld/
 - `src/app/api/v1/mcp_graph.py`
 - `src/app/schemas/mcp_graph.py`
 - `src/app/services/mcp_graph_service.py`
+
+### 10.7 冗余清理与搜索触发策略（本次会话）
+
+1. 删除未使用代码：
+   - 移除 `src/app/services/mcp_graph_service.py` 中未使用的 `_match_query`。
+   - 删除未被调用的 `src/app/workers/embedding_worker.py`。
+2. 搜索触发策略统一为按钮触发：
+   - `/theworld/v1/console` 主搜索框右侧新增 `Search` 按钮，点击后才发起查询。
+   - `/theworld/v1/console/graph` 的 `Ontologies/Data Attributes` 搜索框右侧新增 `Search` 按钮，点击后才发起查询。
+3. Global Config 增强：
+   - 新增“重置默认权重（0.45/0.55）”按钮。
+   - 新增“当前生效比例预览”。
+   - 新增“离线回填”触发按钮（调用 `POST /api/v1/ontology/embeddings:backfill`）。

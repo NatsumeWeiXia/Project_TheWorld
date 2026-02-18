@@ -50,9 +50,10 @@
                 </div>
             </div>
             <div class="flex items-center gap-2">
-                <button @click="toggleTheme" class="btn btn-xs btn-ghost" :title="isDarkTheme ? '切换到亮色' : '切换到暗色'">
-                    <i :class="['fas', isDarkTheme ? 'fa-sun' : 'fa-moon']"></i>
+                <button @click="toggleTheme" class="btn btn-xs btn-ghost">
+                    {{ isDarkTheme ? 'Light' : 'Dark' }}
                 </button>
+                <button @click="openGlobalConfigModal" class="btn btn-xs btn-outline">Global Config</button>
                 <button @click="openGraphWorkspace" class="btn btn-xs btn-outline">Graph</button>
                 <button @click="owlValidate" class="btn btn-xs btn-outline btn-accent">Validate OWL</button>
                 <button @click="owlExport" class="btn btn-xs btn-ghost text-gray-500"><i class="fas fa-download"></i></button>
@@ -82,8 +83,13 @@
                         <button @click="openCreateModal()" class="btn btn-xs btn-circle btn-primary"><i class="fas fa-plus"></i></button>
                     </div>
                     <div class="relative">
-                        <i class="fas fa-search absolute left-2 top-2.5 text-gray-400 text-xs"></i>
-                        <input v-model="searchQuery" class="input input-xs input-bordered w-full pl-7" placeholder="Search..." />
+                        <div class="flex gap-1">
+                            <div class="relative flex-1">
+                                <i class="fas fa-search absolute left-2 top-2.5 text-gray-400 text-xs"></i>
+                                <input v-model="searchQuery" @keyup.enter="executeSearch" class="input input-xs input-bordered w-full pl-7" placeholder="Search..." />
+                            </div>
+                            <button @click="executeSearch" class="btn btn-xs btn-outline">Search</button>
+                        </div>
                     </div>
                 </div>
 
@@ -197,41 +203,66 @@
                                     <span><i class="fas fa-tags mr-2"></i>Bound Data Attributes</span>
                                     <button @click="openAttrPicker" class="btn btn-xs btn-primary"><i class="fas fa-plus mr-1"></i>添加属性</button>
                                 </div>
-                                <div class="section-body">
+                                <div class="section-body space-y-4">
                                     <div v-if="boundAttributesList.length === 0" class="text-center py-8 text-slate-400 text-sm italic border-2 border-dashed rounded">
                                         No attributes bound. Click "添加属性" to start.
                                     </div>
-                                    <div v-else class="overflow-x-auto border rounded">
-                                        <table class="table table-xs w-full">
-                                            <thead class="bg-base-200">
-                                                <tr>
-                                                    <th>Attribute</th>
-                                                    <th>Code</th>
-                                                    <th>Inheritance</th>
-                                                    <th>DB Field Name</th>
-                                                    <th class="w-10 text-center">Action</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <tr v-for="attr in boundAttributesList" :key="attr.id">
-                                                    <td><button @click="openDetailPreview('data-attr', attr.id)" class="font-medium link link-hover">{{ attr.name }}</button></td>
-                                                    <td class="font-mono opacity-50">{{ attr.code }}</td>
-                                                    <td>
-                                                        <span v-if="editForm.inheritedAttrIds.includes(attr.id)" class="badge badge-xs badge-ghost">Inherited</span>
-                                                        <span v-if="editForm.directAttrIds.includes(attr.id)" class="badge badge-xs badge-info text-white">Direct</span>
-                                                    </td>
-                                                    <td>
-                                                        <input v-model="editForm.field_mappings[attr.id]" 
-                                                            class="input input-bordered input-xs w-full" placeholder="field_name" />
-                                                    </td>
-                                                    <td class="text-center">
-                                                        <button v-if="editForm.directAttrIds.includes(attr.id)" @click="removeDirectAttr(attr.id)" class="btn btn-xs btn-ghost text-error" title="移除直接绑定"><i class="fas fa-trash"></i></button>
-                                                        <i v-else class="fas fa-lock text-[10px] opacity-20" title="继承属性不可直接删除"></i>
-                                                    </td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                    <template v-else>
+                                        <!-- Direct Section -->
+                                        <div>
+                                            <h4 class="text-[10px] font-bold opacity-40 uppercase mb-2">Direct</h4>
+                                            <div class="overflow-x-auto border rounded mb-4">
+                                                <table class="table table-xs w-full">
+                                                    <thead class="bg-base-200">
+                                                        <tr>
+                                                            <th>Attribute</th>
+                                                            <th>Code</th>
+                                                            <th>DB Field Name</th>
+                                                            <th class="w-10 text-center">Action</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <tr v-for="attr in boundAttributesList.filter(a => editForm.directAttrIds.includes(a.id))" :key="'direct-'+attr.id">
+                                                            <td><button @click="openDetailPreview('data-attr', attr.id)" class="font-medium link link-hover">{{ attr.name }}</button></td>
+                                                            <td class="font-mono opacity-50">{{ attr.code }}</td>
+                                                            <td><input v-model="editForm.field_mappings[attr.id]" class="input input-bordered input-xs w-full" placeholder="field_name" /></td>
+                                                            <td class="text-center"><button @click="removeDirectAttr(attr.id)" class="btn btn-xs btn-ghost text-error" title="移除直接绑定"><i class="fas fa-trash"></i></button></td>
+                                                        </tr>
+                                                        <tr v-if="boundAttributesList.filter(a => editForm.directAttrIds.includes(a.id)).length === 0">
+                                                            <td colspan="4" class="text-center py-2 text-slate-300 text-xs italic">No direct attributes</td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                        <!-- Inherited Section -->
+                                        <div>
+                                            <h4 class="text-[10px] font-bold opacity-40 uppercase mb-2">Inherited</h4>
+                                            <div class="overflow-x-auto border rounded">
+                                                <table class="table table-xs w-full">
+                                                    <thead class="bg-base-200">
+                                                        <tr>
+                                                            <th>Attribute</th>
+                                                            <th>Code</th>
+                                                            <th>DB Field Name</th>
+                                                            <th class="w-10 text-center">Action</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <tr v-for="attr in boundAttributesList.filter(a => !editForm.directAttrIds.includes(a.id))" :key="'inherited-'+attr.id">
+                                                            <td><button @click="openDetailPreview('data-attr', attr.id)" class="font-medium link link-hover">{{ attr.name }}</button></td>
+                                                            <td class="font-mono opacity-50">{{ attr.code }}</td>
+                                                            <td><input v-model="editForm.field_mappings[attr.id]" class="input input-bordered input-xs w-full" placeholder="field_name" /></td>
+                                                            <td class="text-center"><i class="fas fa-lock text-[10px] opacity-20" title="继承属性不可直接删除"></i></td>
+                                                        </tr>
+                                                        <tr v-if="boundAttributesList.filter(a => !editForm.directAttrIds.includes(a.id)).length === 0">
+                                                            <td colspan="4" class="text-center py-2 text-slate-300 text-xs italic">No inherited attributes</td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </template>
                                 </div>
                             </div>
 
@@ -280,17 +311,45 @@
                             <div class="section-card bg-slate-100/50">
                                 <div class="section-header"><span><i class="fas fa-project-diagram mr-2"></i>Associated Entities</span></div>
                                 <div class="section-body">
-                                    <div v-if="activeTab === 'ontology'" class="grid grid-cols-2 gap-4">
+                                    <div v-if="activeTab === 'ontology'" class="grid grid-cols-2 gap-6">
+                                        <!-- Object Properties -->
                                         <div>
-                                            <h4 class="text-[10px] font-bold opacity-40 uppercase mb-2">Object Properties</h4>
-                                            <div class="flex flex-wrap gap-1">
-                                                <div v-for="rel in selectedItemRelations" :key="rel.id" @click="openDetailPreview('obj-prop', rel.id)" class="badge badge-outline badge-sm cursor-pointer hover:bg-primary hover:text-white">{{ rel.name }} · {{ rel.roleText }}</div>
+                                            <h4 class="text-[10px] font-bold opacity-40 uppercase mb-3">Object Properties</h4>
+                                            <div class="space-y-3">
+                                                <div>
+                                                    <div class="text-[9px] font-bold opacity-30 uppercase mb-1">Direct</div>
+                                                    <div class="flex flex-wrap gap-1 min-h-[1.5rem]">
+                                                        <div v-for="rel in selectedItemRelations.filter(r => r.source === 'Direct')" :key="rel.id" @click="openDetailPreview('obj-prop', rel.id)" class="badge badge-outline badge-sm cursor-pointer hover:bg-primary hover:text-white">{{ rel.name }} · {{ rel.roleText.split(' · ')[0] }}</div>
+                                                        <div v-if="selectedItemRelations.filter(r => r.source === 'Direct').length === 0" class="text-[10px] opacity-30 italic">None</div>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div class="text-[9px] font-bold opacity-30 uppercase mb-1">Inherited</div>
+                                                    <div class="flex flex-wrap gap-1 min-h-[1.5rem]">
+                                                        <div v-for="rel in selectedItemRelations.filter(r => r.source === 'Inherited')" :key="rel.id" @click="openDetailPreview('obj-prop', rel.id)" class="badge badge-outline badge-sm cursor-pointer hover:bg-primary hover:text-white opacity-70">{{ rel.name }} · {{ rel.roleText.split(' · ')[0] }}</div>
+                                                        <div v-if="selectedItemRelations.filter(r => r.source === 'Inherited').length === 0" class="text-[10px] opacity-30 italic">None</div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
+                                        <!-- Capabilities -->
                                         <div>
-                                            <h4 class="text-[10px] font-bold opacity-40 uppercase mb-2">Capabilities</h4>
-                                            <div class="flex flex-wrap gap-1">
-                                                <div v-for="cap in selectedItemCapabilities" :key="cap.id" @click="openDetailPreview('capability', cap.id)" class="badge badge-outline badge-sm cursor-pointer hover:bg-primary hover:text-white">{{ cap.name }} · {{ cap.roleText }}</div>
+                                            <h4 class="text-[10px] font-bold opacity-40 uppercase mb-3">Capabilities</h4>
+                                            <div class="space-y-3">
+                                                <div>
+                                                    <div class="text-[9px] font-bold opacity-30 uppercase mb-1">Direct</div>
+                                                    <div class="flex flex-wrap gap-1 min-h-[1.5rem]">
+                                                        <div v-for="cap in selectedItemCapabilities.filter(c => c.source === 'Direct')" :key="cap.id" @click="openDetailPreview('capability', cap.id)" class="badge badge-outline badge-sm cursor-pointer hover:bg-primary hover:text-white">{{ cap.name }} · {{ cap.roleText.split(' · ')[0] }}</div>
+                                                        <div v-if="selectedItemCapabilities.filter(c => c.source === 'Direct').length === 0" class="text-[10px] opacity-30 italic">None</div>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div class="text-[9px] font-bold opacity-30 uppercase mb-1">Inherited</div>
+                                                    <div class="flex flex-wrap gap-1 min-h-[1.5rem]">
+                                                        <div v-for="cap in selectedItemCapabilities.filter(c => c.source === 'Inherited')" :key="cap.id" @click="openDetailPreview('capability', cap.id)" class="badge badge-outline badge-sm cursor-pointer hover:bg-primary hover:text-white opacity-70">{{ cap.name }} · {{ cap.roleText.split(' · ')[0] }}</div>
+                                                        <div v-if="selectedItemCapabilities.filter(c => c.source === 'Inherited').length === 0" class="text-[10px] opacity-30 italic">None</div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -298,6 +357,7 @@
                                         <h4 class="text-[10px] font-bold opacity-40 uppercase mb-2">Used by Ontologies</h4>
                                         <div class="flex flex-wrap gap-1">
                                             <div v-for="cls in boundOntologies" :key="cls.id" @click="navigateTo('ontology', cls.id)" class="badge badge-outline badge-sm cursor-pointer hover:bg-primary hover:text-white">{{ cls.name }}</div>
+                                            <div v-if="boundOntologies.length === 0" class="text-[10px] opacity-30 italic">None</div>
                                         </div>
                                     </div>
                                 </div>
@@ -605,6 +665,47 @@
             </div>
         </dialog>
 
+        <dialog id="global_config_modal" class="modal">
+            <div class="modal-box max-w-md">
+                <h3 class="font-bold text-lg">Global Search Config</h3>
+                <p class="text-xs opacity-70 mt-1 mb-3">Hybrid score weights for keyword and vector retrieval.</p>
+                <div class="space-y-3">
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">Keyword Weight (w_sparse)</span></label>
+                        <input v-model.number="globalSearchConfig.w_sparse" type="number" min="0" step="0.01" class="input input-bordered w-full" />
+                    </div>
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">Vector Weight (w_dense)</span></label>
+                        <input v-model.number="globalSearchConfig.w_dense" type="number" min="0" step="0.01" class="input input-bordered w-full" />
+                    </div>
+                    <div class="text-[11px] opacity-60">
+                        Effective ratio is normalized by backend (w_sparse / (w_sparse + w_dense), w_dense / (w_sparse + w_dense)).
+                    </div>
+                    <div class="text-xs font-mono bg-base-200 rounded px-3 py-2">
+                        Effective now: sparse {{ effectiveWeightRatio.sparse }} / dense {{ effectiveWeightRatio.dense }}
+                    </div>
+                    <div class="divider my-1">Embedding Backfill</div>
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">Batch Size</span></label>
+                        <input v-model.number="globalSearchConfig.backfill_batch_size" type="number" min="1" max="5000" step="1" class="input input-bordered w-full" />
+                    </div>
+                    <button @click="triggerEmbeddingBackfill" class="btn btn-sm btn-outline" :disabled="loading">
+                        {{ loading ? 'Running...' : 'Run Offline Backfill (Class/Relation/Capability)' }}
+                    </button>
+                    <div v-if="backfillResult" class="text-xs bg-base-200 rounded px-3 py-2 space-y-1">
+                        <div>Updated Total: {{ backfillResult.updated_total }}</div>
+                        <div>Updated: ontology={{ backfillResult.updated?.ontology || 0 }}, obj-prop={{ backfillResult.updated?.['obj-prop'] || 0 }}, capability={{ backfillResult.updated?.capability || 0 }}</div>
+                        <div>Has More: {{ backfillResult.has_more_any ? 'yes' : 'no' }}</div>
+                    </div>
+                </div>
+                <div class="modal-action">
+                    <button @click="resetGlobalSearchWeights" class="btn btn-outline">Reset Default 0.45/0.55</button>
+                    <button @click="closeGlobalConfigModal" class="btn btn-ghost">Cancel</button>
+                    <button @click="saveGlobalConfig" class="btn btn-primary">Save</button>
+                </div>
+            </div>
+        </dialog>
+
         <!-- Toasts -->
         <div class="toast toast-end toast-bottom z-50">
             <div v-for="t in toasts" :key="t.id" :class="['alert shadow-2xl border-none text-white', t.type === 'error' ? 'bg-rose-500' : 'bg-emerald-500']">
@@ -647,6 +748,7 @@
                 const selectedId = ref(null);
                 const selectedItem = ref(null);
                 const searchQuery = ref('');
+                const submittedSearchQuery = ref('');
                 const attrSearchQuery = ref('');
                 const loading = ref(false);
                 const showLogs = ref(false);
@@ -667,6 +769,12 @@
                     tenantId: localStorage.getItem('tenantId') || 'tenant-a',
                     token: localStorage.getItem('token') || 'test-token'
                 });
+                const globalSearchConfig = reactive({
+                    w_sparse: Number(localStorage.getItem('hybrid_w_sparse') || '0.45'),
+                    w_dense: Number(localStorage.getItem('hybrid_w_dense') || '0.55'),
+                    backfill_batch_size: Number(localStorage.getItem('embedding_backfill_batch_size') || '200'),
+                });
+                const backfillResult = ref(null);
 
                 const tabs = [
                     { id: 'ontology', name: 'Ontologies', icon: 'fa-sitemap' },
@@ -677,12 +785,28 @@
 
                 const currentTabName = computed(() => tabs.find(t => t.id === activeTab.value).name);
                 const currentTabIcon = computed(() => tabs.find(t => t.id === activeTab.value).icon);
+                const effectiveWeightRatio = computed(() => {
+                    const ws = Number(globalSearchConfig.w_sparse) || 0;
+                    const wd = Number(globalSearchConfig.w_dense) || 0;
+                    const total = ws + wd;
+                    if (total <= 0) return { sparse: '0.4500', dense: '0.5500' };
+                    return {
+                        sparse: (ws / total).toFixed(4),
+                        dense: (wd / total).toFixed(4),
+                    };
+                });
 
                 const ontologyTree = ref([]);
                 const flatOntologies = ref([]);
                 const dataAttrs = ref([]);
                 const objectProps = ref([]);
                 const capabilities = ref([]);
+                const hybridMatchIds = reactive({
+                    ontology: null,
+                    'data-attr': null,
+                    'obj-prop': null,
+                    capability: null,
+                });
 
                 const editForm = reactive({
                     name: '', description: '', data_type: 'string', skill_md: '',
@@ -712,9 +836,19 @@
                 });
 
                 const filteredTree = computed(() => {
-                    if (!searchQuery.value) return ontologyTree.value;
+                    if (!submittedSearchQuery.value) return ontologyTree.value;
+                    if (hybridMatchIds.ontology instanceof Set) {
+                        const filterByIds = (nodes) => (nodes || []).reduce((acc, n) => {
+                            const children = filterByIds(n.children || []);
+                            if (hybridMatchIds.ontology.has(Number(n.id)) || children.length > 0) {
+                                acc.push({ ...n, children });
+                            }
+                            return acc;
+                        }, []);
+                        return filterByIds(ontologyTree.value);
+                    }
                     const filter = (nodes) => nodes.reduce((acc, n) => {
-                        const match = n.name.toLowerCase().includes(searchQuery.value.toLowerCase()) || n.code.toLowerCase().includes(searchQuery.value.toLowerCase());
+                        const match = n.name.toLowerCase().includes(submittedSearchQuery.value.toLowerCase()) || n.code.toLowerCase().includes(submittedSearchQuery.value.toLowerCase());
                         const children = n.children ? filter(n.children) : [];
                         if (match || children.length) acc.push({ ...n, children });
                         return acc;
@@ -724,7 +858,12 @@
 
                 const filteredList = computed(() => {
                     let list = activeTab.value === 'data-attr' ? dataAttrs.value : (activeTab.value === 'obj-prop' ? objectProps.value : capabilities.value);
-                    if (searchQuery.value) list = list.filter(i => i.name.toLowerCase().includes(searchQuery.value.toLowerCase()) || i.code.toLowerCase().includes(searchQuery.value.toLowerCase()));
+                    const matched = hybridMatchIds[activeTab.value];
+                    if (submittedSearchQuery.value && matched instanceof Set) {
+                        list = list.filter(i => matched.has(Number(i.id)));
+                        return list;
+                    }
+                    if (submittedSearchQuery.value) list = list.filter(i => i.name.toLowerCase().includes(submittedSearchQuery.value.toLowerCase()) || i.code.toLowerCase().includes(submittedSearchQuery.value.toLowerCase()));
                     return list;
                 });
 
@@ -776,7 +915,7 @@
                             const selfInRange = rangeIds.has(Number(selectedId.value));
                             const role = scopeInDomain && scopeInRange ? 'domain/range' : (scopeInDomain ? 'domain' : 'range');
                             const source = (selfInDomain || selfInRange) ? 'Direct' : 'Inherited';
-                            return { ...p, roleText: `${role} · ${source}` };
+                            return { ...p, roleText: `${role} · ${source}`, source };
                         });
                 });
                 const selectedItemCapabilities = computed(() => {
@@ -791,7 +930,7 @@
                         .map(c => {
                             const selfInGroup = (c.domain_groups || []).some(g => (g || []).map(Number).includes(Number(selectedId.value)));
                             const source = selfInGroup ? 'Direct' : 'Inherited';
-                            return { ...c, roleText: `domain · ${source}` };
+                            return { ...c, roleText: `domain · ${source}`, source };
                         });
                 });
                 const formatDateTime = (date = new Date()) => {
@@ -834,6 +973,41 @@
                     }
                 };
 
+                const runHybridSearch = async () => {
+                    const q = (submittedSearchQuery.value || '').trim();
+                    if (!q) {
+                        hybridMatchIds.ontology = null;
+                        hybridMatchIds['data-attr'] = null;
+                        hybridMatchIds['obj-prop'] = null;
+                        hybridMatchIds.capability = null;
+                        return;
+                    }
+                    const type = activeTab.value;
+                    const params = new URLSearchParams({
+                        q,
+                        types: type,
+                        top_k: '200',
+                        w_sparse: String(globalSearchConfig.w_sparse),
+                        w_dense: String(globalSearchConfig.w_dense),
+                    });
+                    try {
+                        const res = await fetch(`/api/v1/ontology/hybrid-search?${params.toString()}`, {
+                            method: 'GET',
+                            headers: { "X-Tenant-Id": config.tenantId, "Authorization": `Bearer ${config.token}` },
+                        });
+                        const payload = await res.json();
+                        if (!res.ok || payload.code !== 0) return;
+                        const ids = (((payload.data || {}).grouped || {})[type] || []).map(Number);
+                        hybridMatchIds[type] = new Set(ids);
+                    } catch (_err) {
+                        // Keep local fallback filtering when hybrid search request fails.
+                    }
+                };
+                const executeSearch = () => {
+                    submittedSearchQuery.value = (searchQuery.value || '').trim();
+                    runHybridSearch();
+                };
+
                 const toast = (msg, type = 'success') => {
                     const id = Date.now();
                     toasts.value.push({ id, msg, type });
@@ -853,7 +1027,41 @@
                     localStorage.setItem('uiTheme', theme.value);
                 };
                 const toggleTheme = () => applyTheme(theme.value === 'dark' ? 'light' : 'dark');
-                const openGraphWorkspace = () => window.open('/graph-workspace', '_blank', 'noopener,noreferrer');
+                const openGraphWorkspace = () => window.open('/theworld/v1/console/graph', '_blank', 'noopener,noreferrer');
+                const openGlobalConfigModal = () => document.getElementById('global_config_modal').showModal();
+                const closeGlobalConfigModal = () => document.getElementById('global_config_modal').close();
+                const saveGlobalConfig = () => {
+                    const ws = Number(globalSearchConfig.w_sparse);
+                    const wd = Number(globalSearchConfig.w_dense);
+                    if (!Number.isFinite(ws) || !Number.isFinite(wd) || ws < 0 || wd < 0 || (ws + wd) <= 0) {
+                        toast('Invalid weights, require non-negative and sum > 0', 'error');
+                        return;
+                    }
+                    globalSearchConfig.w_sparse = Number(ws.toFixed(4));
+                    globalSearchConfig.w_dense = Number(wd.toFixed(4));
+                    localStorage.setItem('hybrid_w_sparse', String(globalSearchConfig.w_sparse));
+                    localStorage.setItem('hybrid_w_dense', String(globalSearchConfig.w_dense));
+                    localStorage.setItem('embedding_backfill_batch_size', String(Math.max(1, Number(globalSearchConfig.backfill_batch_size) || 200)));
+                    toast('Global search config saved');
+                    closeGlobalConfigModal();
+                    runHybridSearch();
+                };
+                const resetGlobalSearchWeights = () => {
+                    globalSearchConfig.w_sparse = 0.45;
+                    globalSearchConfig.w_dense = 0.55;
+                };
+                const triggerEmbeddingBackfill = async () => {
+                    const batchSize = Math.max(1, Math.min(5000, Number(globalSearchConfig.backfill_batch_size) || 200));
+                    globalSearchConfig.backfill_batch_size = batchSize;
+                    localStorage.setItem('embedding_backfill_batch_size', String(batchSize));
+                    const res = await call('POST', '/api/v1/ontology/embeddings:backfill', {
+                        resource_types: ['ontology', 'obj-prop', 'capability'],
+                        batch_size: batchSize,
+                    });
+                    if (!res) return;
+                    backfillResult.value = res;
+                    toast(`Backfill updated ${res.updated_total} rows`);
+                };
 
                 const renderMd = (s) => s ? marked.parse(s) : '';
                 const classNameById = (classId) => {
@@ -1228,6 +1436,7 @@
                     boundAttributesList, boundOntologies, selectedItemRelations, selectedItemCapabilities, selectedDomainClasses, selectedRangeClasses,
                     loading, showLogs, logs, toasts, tempDirectAttrIds, classPickerTitle, classPickerSelection, tempCapDomainGroups, activeTempGroupIndex, previewModal,
                     renderMd, selectItem, saveChanges, createPhysicalTable, openManageDataModal, closeManageDataModal, queryManageData, createManageDataRow, startEditDataRow, cancelEditDataRow, saveEditDataRow, navigateTo, classNameById, formatDataCell,
+                    executeSearch,
                     deleteSelected,
                     openCreateModal, closeCreateModal, executeCreate,
                     openAttrPicker, closeAttrPicker, confirmAttrPicker, removeDirectAttr,
@@ -1235,7 +1444,9 @@
                     openCapabilityDomainGroupModal, closeCapabilityDomainGroupModal, addTempCapabilityGroup, removeTempCapabilityGroup, confirmCapabilityDomainGroupModal,
                     openDetailPreview, closeDetailPreview, openPreviewInEditor,
                     owlValidate, owlExport, config,
-                    isDarkTheme, toggleTheme, openGraphWorkspace
+                    isDarkTheme, toggleTheme, openGraphWorkspace,
+                    globalSearchConfig, openGlobalConfigModal, closeGlobalConfigModal, saveGlobalConfig,
+                    resetGlobalSearchWeights, effectiveWeightRatio, triggerEmbeddingBackfill, backfillResult
                 };
             }
         }).mount('#app');

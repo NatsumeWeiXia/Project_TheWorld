@@ -3,6 +3,7 @@ from collections import defaultdict
 from sqlalchemy.orm import Session
 
 from src.app.core.errors import AppError, ErrorCodes
+from src.app.domain.retrieval.hybrid_engine import HybridRetrievalEngine
 from src.app.repositories.ontology_repo import OntologyRepository
 
 
@@ -11,15 +12,16 @@ class MCPGraphService:
         self.repo = OntologyRepository(db)
 
     @staticmethod
-    def _match_query(query: str | None, *texts: str | None) -> bool:
-        q = (query or "").strip().lower()
-        if not q:
-            return True
-        return any(q in (text or "").lower() for text in texts)
-
-    @staticmethod
     def _normalize_codes(codes: list[str] | None) -> set[str]:
         return {str(code).strip() for code in (codes or []) if str(code).strip()}
+
+    @staticmethod
+    def _as_non_negative_float(value, default: float) -> float:
+        try:
+            parsed = float(value)
+            return parsed if parsed >= 0 else default
+        except (TypeError, ValueError):
+            return default
 
     def _class_context(self, tenant_id: str):
         classes = self.repo.list_classes(tenant_id, status=1)
@@ -89,29 +91,77 @@ class MCPGraphService:
             "description": item.description,
         }
 
-    def list_data_attributes(self, tenant_id: str, query: str | None = None, codes: list[str] | None = None):
+    @staticmethod
+    def _to_search_text(name: str | None, code: str | None, description: str | None) -> str:
+        return " ".join([name or "", code or "", description or ""]).strip()
+
+    def list_data_attributes(
+        self,
+        tenant_id: str,
+        query: str | None = None,
+        codes: list[str] | None = None,
+        w_sparse: float = 0.45,
+        w_dense: float = 0.55,
+    ):
         code_filter = self._normalize_codes(codes)
         attrs = self.repo.list_all_attributes(tenant_id)
-        output = []
-        for item in attrs:
-            if code_filter and item.code not in code_filter:
-                continue
-            if not self._match_query(query, item.name, item.code):
-                continue
-            output.append(self._build_data_attribute_basic(item))
+        filtered_attrs = [item for item in attrs if not code_filter or item.code in code_filter]
+        output = [self._build_data_attribute_basic(item) for item in filtered_attrs]
+        q = (query or "").strip()
+        if q:
+            scored = HybridRetrievalEngine.score_records(
+                q,
+                [
+                    {
+                        "code": item.code,
+                        "search_text": item.search_text or self._to_search_text(item.name, item.code, item.description),
+                        "embedding": item.embedding or [],
+                    }
+                    for item in filtered_attrs
+                ],
+                w_sparse=w_sparse,
+                w_dense=w_dense,
+            )
+            rank = {item["code"]: idx for idx, item in enumerate(scored)}
+            output.sort(key=lambda x: (rank.get(x["code"], 10**9), x.get("name") or "", x.get("code") or ""))
+            return output[:200]
         output.sort(key=lambda x: (x["name"] or "", x["code"] or ""))
         return output
 
-    def list_ontologies(self, tenant_id: str, query: str | None = None, codes: list[str] | None = None):
+    def list_ontologies(
+        self,
+        tenant_id: str,
+        query: str | None = None,
+        codes: list[str] | None = None,
+        w_sparse: float = 0.45,
+        w_dense: float = 0.55,
+    ):
         code_filter = self._normalize_codes(codes)
         classes, _class_by_id, _class_by_code, parent_code_by_class_id, _parent_ids_by_child_id, _child_ids_by_parent_id = self._class_context(tenant_id)
-        output = []
-        for item in classes:
-            if code_filter and item.code not in code_filter:
-                continue
-            if not self._match_query(query, item.name, item.code):
-                continue
-            output.append(self._build_ontology_basic(item, parent_code_by_class_id))
+        output = [
+            self._build_ontology_basic(item, parent_code_by_class_id)
+            for item in classes
+            if not code_filter or item.code in code_filter
+        ]
+        q = (query or "").strip()
+        if q:
+            scored = HybridRetrievalEngine.score_records(
+                q,
+                [
+                    {
+                        "code": item.code,
+                        "search_text": item.search_text or self._to_search_text(item.name, item.code, item.description),
+                        "embedding": item.embedding or [],
+                    }
+                    for item in classes
+                    if not code_filter or item.code in code_filter
+                ],
+                w_sparse=w_sparse,
+                w_dense=w_dense,
+            )
+            rank = {item["code"]: idx for idx, item in enumerate(scored)}
+            output.sort(key=lambda x: (rank.get(x["code"], 10**9), x.get("name") or "", x.get("code") or ""))
+            return output[:200]
         output.sort(key=lambda x: (x["name"] or "", x["code"] or ""))
         return output
 
@@ -348,13 +398,29 @@ class MCPGraphService:
         return [
             {
                 "name": "graph.list_data_attributes",
-                "description": "Query Data Attributes basic info by name/code fuzzy query.",
-                "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "codes": {"type": "array", "items": {"type": "string"}}}},
+                "description": "Hybrid search Data Attributes by keyword + vector over name/code/description.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "codes": {"type": "array", "items": {"type": "string"}},
+                        "w_sparse": {"type": "number", "minimum": 0},
+                        "w_dense": {"type": "number", "minimum": 0},
+                    },
+                },
             },
             {
                 "name": "graph.list_ontologies",
-                "description": "Query Ontologies basic info by name/code fuzzy query.",
-                "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "codes": {"type": "array", "items": {"type": "string"}}}},
+                "description": "Hybrid search Ontologies by keyword + vector over name/code/description.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "codes": {"type": "array", "items": {"type": "string"}},
+                        "w_sparse": {"type": "number", "minimum": 0},
+                        "w_dense": {"type": "number", "minimum": 0},
+                    },
+                },
             },
             {
                 "name": "graph.get_data_attribute_related_ontologies",
@@ -391,9 +457,21 @@ class MCPGraphService:
     def call_tool(self, tenant_id: str, tool_name: str, arguments: dict):
         args = arguments or {}
         if tool_name == "graph.list_data_attributes":
-            return self.list_data_attributes(tenant_id, query=args.get("query"), codes=args.get("codes"))
+            return self.list_data_attributes(
+                tenant_id,
+                query=args.get("query"),
+                codes=args.get("codes"),
+                w_sparse=self._as_non_negative_float(args.get("w_sparse"), 0.45),
+                w_dense=self._as_non_negative_float(args.get("w_dense"), 0.55),
+            )
         if tool_name == "graph.list_ontologies":
-            return self.list_ontologies(tenant_id, query=args.get("query"), codes=args.get("codes"))
+            return self.list_ontologies(
+                tenant_id,
+                query=args.get("query"),
+                codes=args.get("codes"),
+                w_sparse=self._as_non_negative_float(args.get("w_sparse"), 0.45),
+                w_dense=self._as_non_negative_float(args.get("w_dense"), 0.55),
+            )
         if tool_name == "graph.get_data_attribute_related_ontologies":
             return self.data_attribute_related_ontologies(tenant_id, attribute_codes=args.get("attributeCodes") or [])
         if tool_name == "graph.get_ontology_related_resources":

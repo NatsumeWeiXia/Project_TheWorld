@@ -21,25 +21,39 @@ def _ensure_runtime_schema() -> None:
     with engine.begin() as conn:
         inspector = inspect(conn)
         table_names = set(inspector.get_table_names())
-        if "ontology_capability" not in table_names:
-            return
-        cap_columns = {col["name"] for col in inspector.get_columns("ontology_capability")}
-        if "domain_groups_json" in cap_columns:
-            return
-        if conn.dialect.name == "postgresql":
-            conn.execute(
-                text(
-                    "ALTER TABLE ontology_capability "
-                    "ADD COLUMN domain_groups_json JSON NOT NULL DEFAULT '[]'::json"
-                )
-            )
-        else:
-            conn.execute(
-                text(
-                    "ALTER TABLE ontology_capability "
-                    "ADD COLUMN domain_groups_json JSON NOT NULL DEFAULT '[]'"
-                )
-            )
+        dialect = conn.dialect.name
+
+        def ensure_text_and_embedding(table_name: str):
+            if table_name not in table_names:
+                return
+            columns = {col["name"] for col in inspector.get_columns(table_name)}
+            if "search_text" not in columns:
+                conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN search_text TEXT"))
+            if "embedding" not in columns:
+                embedding_sql = "JSONB" if dialect == "postgresql" else "JSON"
+                conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN embedding {embedding_sql}"))
+
+        ensure_text_and_embedding("ontology_class")
+        ensure_text_and_embedding("ontology_relation")
+        ensure_text_and_embedding("ontology_capability")
+
+        if "ontology_capability" in table_names:
+            cap_columns = {col["name"] for col in inspector.get_columns("ontology_capability")}
+            if "domain_groups_json" not in cap_columns:
+                if dialect == "postgresql":
+                    conn.execute(
+                        text(
+                            "ALTER TABLE ontology_capability "
+                            "ADD COLUMN domain_groups_json JSON NOT NULL DEFAULT '[]'::json"
+                        )
+                    )
+                else:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE ontology_capability "
+                            "ADD COLUMN domain_groups_json JSON NOT NULL DEFAULT '[]'"
+                        )
+                    )
 
 
 @app.middleware("http")
@@ -84,19 +98,19 @@ def index() -> str:
           <li>M1 management console page</li>
         </ul>
         <p>OpenAPI: <a href="/docs">/docs</a></p>
-        <p>Console: <a href="/m1/console">/m1/console</a></p>
-        <p>Graph Workspace: <a href="/graph-workspace">/graph-workspace</a></p>
+        <p>Console: <a href="/theworld/v1/console">/theworld/v1/console</a></p>
+        <p>Graph Workspace: <a href="/theworld/v1/console/graph">/theworld/v1/console/graph</a></p>
       </body>
     </html>
     """
 
 
-@app.get("/m1/console", response_class=HTMLResponse)
+@app.get("/theworld/v1/console", response_class=HTMLResponse)
 def m1_console() -> str:
     return console_html_path.read_text(encoding="utf-8")
 
 
-@app.get("/graph-workspace", response_class=HTMLResponse)
+@app.get("/theworld/v1/console/graph", response_class=HTMLResponse)
 def graph_workspace() -> str:
     return graph_workspace_html_path.read_text(encoding="utf-8")
 

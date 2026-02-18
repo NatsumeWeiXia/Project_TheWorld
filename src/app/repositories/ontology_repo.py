@@ -33,6 +33,14 @@ class OntologyRepository:
         stmt = stmt.order_by(models.OntologyClass.id.desc())
         return list(self.db.scalars(stmt))
 
+    def list_classes_missing_search_vector(self, tenant_id: str, status: int | None = 1, limit: int = 100):
+        stmt = select(models.OntologyClass).where(models.OntologyClass.tenant_id == tenant_id)
+        if status is not None:
+            stmt = stmt.where(models.OntologyClass.status == status)
+        stmt = stmt.where(or_(models.OntologyClass.search_text.is_(None), models.OntologyClass.embedding.is_(None)))
+        stmt = stmt.order_by(models.OntologyClass.id.asc()).limit(max(int(limit), 1))
+        return list(self.db.scalars(stmt))
+
     def update_class(self, obj: models.OntologyClass, payload: dict):
         for key, value in payload.items():
             if value is not None:
@@ -321,6 +329,8 @@ class OntologyRepository:
             code=payload["code"],
             name=payload["name"],
             description=payload.get("description"),
+            search_text=payload.get("search_text"),
+            embedding=payload.get("embedding"),
             skill_md=payload.get("skill_md"),
             relation_type=payload["relation_type"],
             mcp_bindings_json=payload.get("mcp_bindings_json", []),
@@ -389,6 +399,20 @@ class OntologyRepository:
 
     def list_all_relations(self, tenant_id: str):
         stmt = select(models.OntologyRelation).where(models.OntologyRelation.tenant_id == tenant_id)
+        return list(self.db.scalars(stmt))
+
+    def list_relations_missing_search_vector(self, tenant_id: str, limit: int = 100):
+        stmt = (
+            select(models.OntologyRelation)
+            .where(
+                and_(
+                    models.OntologyRelation.tenant_id == tenant_id,
+                    or_(models.OntologyRelation.search_text.is_(None), models.OntologyRelation.embedding.is_(None)),
+                )
+            )
+            .order_by(models.OntologyRelation.id.asc())
+            .limit(max(int(limit), 1))
+        )
         return list(self.db.scalars(stmt))
 
     def list_relation_domains(self, tenant_id: str, relation_id: int):
@@ -541,6 +565,20 @@ class OntologyRepository:
 
     def list_all_capabilities(self, tenant_id: str):
         stmt = select(models.OntologyCapability).where(models.OntologyCapability.tenant_id == tenant_id)
+        return list(self.db.scalars(stmt))
+
+    def list_capabilities_missing_search_vector(self, tenant_id: str, limit: int = 100):
+        stmt = (
+            select(models.OntologyCapability)
+            .where(
+                and_(
+                    models.OntologyCapability.tenant_id == tenant_id,
+                    or_(models.OntologyCapability.search_text.is_(None), models.OntologyCapability.embedding.is_(None)),
+                )
+            )
+            .order_by(models.OntologyCapability.id.asc())
+            .limit(max(int(limit), 1))
+        )
         return list(self.db.scalars(stmt))
 
     def get_capability(self, tenant_id: str, capability_id: int):

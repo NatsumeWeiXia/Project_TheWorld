@@ -5,14 +5,33 @@ from src.app.services.embedding_service import EmbeddingService
 
 class HybridRetrievalEngine:
     @classmethod
-    def score_attributes(cls, query: str, attributes: list[dict]) -> list[dict]:
+    def score_records(
+        cls,
+        query: str,
+        records: list[dict],
+        w_sparse: float = 0.45,
+        w_dense: float = 0.55,
+    ) -> list[dict]:
         normalized_query = preprocess_query(query)
         query_embedding = EmbeddingService.embed(normalized_query)
+
         scored = []
-        for item in attributes:
-            sparse = sparse_score(normalized_query, item.get("search_text") or item.get("name") or "")
-            dense = cosine_similarity(query_embedding, item.get("embedding") or [])
-            score = hybrid_score(sparse, dense)
+        for item in records:
+            text = item.get("search_text") or item.get("name") or ""
+            embedding = item.get("embedding") or []
+            sparse = sparse_score(normalized_query, text)
+            dense = cosine_similarity(query_embedding, embedding)
+            score = hybrid_score(sparse, dense, w_sparse=w_sparse, w_dense=w_dense)
             scored.append({**item, "score": round(score, 6)})
         scored.sort(key=lambda x: x["score"], reverse=True)
         return scored
+
+    @classmethod
+    def score_attributes(
+        cls,
+        query: str,
+        attributes: list[dict],
+        w_sparse: float = 0.45,
+        w_dense: float = 0.55,
+    ) -> list[dict]:
+        return cls.score_records(query, attributes, w_sparse=w_sparse, w_dense=w_dense)
