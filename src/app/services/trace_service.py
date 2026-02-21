@@ -4,11 +4,16 @@ from src.app.services.observability.langfuse_sink import LangfuseSink
 
 ALLOWED_EVENTS = {
     "intent_parsed",
+    "plan_generated",
+    "ontology_selected",
     "attributes_matched",
     "ontologies_located",
     "task_planned",
     "task_executed",
     "clarification_asked",
+    "traversal_confirmation_requested",
+    "traversal_confirmation_received",
+    "traversal_step_completed",
     "recovery_triggered",
     "session_completed",
     "session_failed",

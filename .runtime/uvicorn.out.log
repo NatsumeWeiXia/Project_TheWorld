@@ -70,3 +70,23 @@
 [2026-02-21 09:45:45] INFO:     127.0.0.1:5618 - "POST /api/v1/reasoning/sessions/rs_52556091bbc148ad9614feb8f6a9f532/run HTTP/1.1" 200 OK
 [2026-02-21 09:55:08] INFO:     127.0.0.1:6121 - "POST /api/v1/reasoning/sessions/rs_52556091bbc148ad9614feb8f6a9f532/clarify HTTP/1.1" 200 OK
 [2026-02-21 09:55:14] INFO:     127.0.0.1:6121 - "POST /api/v1/reasoning/sessions/rs_52556091bbc148ad9614feb8f6a9f532/run HTTP/1.1" 200 OK
+[2026-02-21 12:04:03] INFO:     127.0.0.1:1875 - "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 Not Found
+[2026-02-21 12:04:07] INFO:     127.0.0.1:1875 - "GET /theworld/v1/console/graph HTTP/1.1" 200 OK
+[2026-02-21 12:04:07] INFO:     127.0.0.1:1875 - "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 Not Found
+[2026-02-21 12:04:12] INFO:     127.0.0.1:12184 - "GET /api/v1/config/tenant-search-config HTTP/1.1" 200 OK
+[2026-02-21 12:04:12] INFO:     127.0.0.1:12184 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-21 12:04:12] INFO:     127.0.0.1:9121 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-21 12:04:32] INFO:     127.0.0.1:3298 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-21 12:07:06] INFO:     127.0.0.1:6646 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-21 12:07:34] INFO:     127.0.0.1:12258 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-21 12:21:10] INFO:     127.0.0.1:8691 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-21 12:21:26] INFO:     127.0.0.1:12390 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-21 12:23:42] INFO:     127.0.0.1:9599 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-21 12:24:48] INFO:     127.0.0.1:5649 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-21 12:25:05] INFO:     127.0.0.1:5411 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-21 12:52:34] INFO:     127.0.0.1:6448 - "GET /api/v1/config/tenant-llm HTTP/1.1" 200 OK
+[2026-02-21 12:52:34] INFO:     127.0.0.1:6448 - "GET /api/v1/config/tenant-search-config HTTP/1.1" 200 OK
+[2026-02-21 12:52:34] INFO:     127.0.0.1:6448 - "GET /api/v1/config/observability/langfuse HTTP/1.1" 200 OK
+[2026-02-21 13:17:36] INFO:     127.0.0.1:13228 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-21 13:28:30] INFO:     127.0.0.1:6451 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK
+[2026-02-21 13:29:07] INFO:     127.0.0.1:9310 - "POST /api/v1/mcp/graph/tools%3Acall HTTP/1.1" 200 OK

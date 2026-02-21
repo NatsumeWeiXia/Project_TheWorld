@@ -1,5 +1,7 @@
 ﻿from fastapi.testclient import TestClient
 
+from src.app.services.llm.langchain_client import LangChainLLMClient
+
 
 def _create_class(client: TestClient, headers: dict, code: str, name: str) -> int:
     resp = client.post(
@@ -106,7 +108,46 @@ def test_tenant_llm_verify_returns_structured_result(client: TestClient, headers
     assert isinstance(body["data"]["ok"], bool)
 
 
-def test_reasoning_uses_tenant_llm_route_metadata(client: TestClient, headers: dict):
+def test_reasoning_uses_tenant_llm_route_metadata(client: TestClient, headers: dict, monkeypatch):
+    def _mock_invoke_json(runtime_cfg: dict, system_prompt: str, user_payload: dict, schema_hint: dict | None = None, audit_callback=None):
+        if "query" in user_payload and "intent" not in user_payload and "candidates" not in user_payload:
+            return {
+                "keywords": ["订单号"],
+                "business_elements": [{"name": "订单号", "value": "A001", "role": "filter"}],
+                "goal_actions": ["查询"],
+                "intent_summary": str(user_payload.get("query") or ""),
+            }
+        if "candidates" in user_payload:
+            codes = [str((item or {}).get("code") or "").strip() for item in (user_payload.get("candidates") or [])]
+            codes = [code for code in codes if code]
+            return {"input_ontology_codes": ([codes[0]] if codes else []), "target_ontology_codes": [], "reason": "mock"}
+        if "capabilities" in user_payload and "object_properties" in user_payload:
+            caps = user_payload.get("capabilities") or []
+            return {"action": "execute_capability", "capability_code": (caps[0] or {}).get("code"), "object_property_code": "", "reason": "mock"}
+        if "capability_detail" in user_payload:
+            catalog = user_payload.get("attribute_catalog") or []
+            field_name = (catalog[0] or {}).get("field_name") if catalog else None
+            return {
+                "mode": "query",
+                "class_id": user_payload.get("ontology", {}).get("class_id"),
+                "filters": ([{"field": field_name, "op": "eq", "value": "A001"}] if field_name else []),
+                "group_by": [],
+                "metrics": [{"agg": "count", "alias": "count"}],
+                "page": 1,
+                "page_size": 20,
+                "sort_field": None,
+                "sort_order": "asc",
+                "reason": "mock",
+            }
+        return schema_hint or {}
+
+    monkeypatch.setattr(LangChainLLMClient, "invoke_json", staticmethod(_mock_invoke_json))
+    monkeypatch.setattr(
+        LangChainLLMClient,
+        "summarize_with_context",
+        staticmethod(lambda runtime_cfg, query, ontology, selected_task, audit_callback=None: "mock summary"),
+    )
+
     client.put(
         "/api/v1/config/tenant-llm",
         headers=headers,
@@ -356,3 +397,4 @@ def test_active_tenant_registry_tracks_seen_tenants(client: TestClient, headers:
     tenant_ids = {item["tenant_id"] for item in body["data"]["items"]}
     assert "tenant-a" in tenant_ids
     assert "tenant-b" in tenant_ids
+

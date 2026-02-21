@@ -310,6 +310,7 @@ createApp({
             attachGraphContext: true,
             sessionId: "",
             awaitingClarification: false,
+            awaitingConfirmation: false,
             input: "",
             loading: false,
             messages: [],
@@ -1064,11 +1065,22 @@ createApp({
             const runData = await apiPost(`/api/v1/reasoning/sessions/${chat.sessionId}/run`, userInput ? { user_input: userInput } : {});
             if (runData.status === "waiting_clarification") {
                 chat.awaitingClarification = true;
+                chat.awaitingConfirmation = false;
                 const q = (((runData.clarification || {}).question || {}).question) || "需要更多信息，请补充。";
                 addChatMessage("assistant", q);
                 return;
             }
+            if (runData.status === "waiting_confirmation") {
+                chat.awaitingClarification = false;
+                chat.awaitingConfirmation = true;
+                const q = ((((runData.confirmation || {}).question || {}).question)
+                    || (((runData.clarification || {}).question || {}).question)
+                    || "需要您确认是否继续下一步。");
+                addChatMessage("assistant", q);
+                return;
+            }
             chat.awaitingClarification = false;
+            chat.awaitingConfirmation = false;
             const result = runData.result || {};
             const summary = result.summary || "执行完成";
             const mode = result.data_execution_mode ? `\nData mode: ${result.data_execution_mode}` : "";
@@ -1090,9 +1102,21 @@ createApp({
                     });
                     chat.sessionId = created.session_id;
                     await runReasoning();
+                } else if (chat.awaitingConfirmation) {
+                    const lowerText = text.toLowerCase();
+                    const reject = lowerText.includes("不同意") || lowerText.includes("拒绝") || lowerText.includes("取消") || lowerText.includes("no");
+                    await apiPost(`/api/v1/reasoning/sessions/${chat.sessionId}/clarify`, {
+                        answer: {
+                            type: "confirmation",
+                            decision: reject ? "reject" : "approve",
+                            text,
+                            graph_context: graphContext,
+                        },
+                    });
+                    await runReasoning();
                 } else if (chat.awaitingClarification) {
                     await apiPost(`/api/v1/reasoning/sessions/${chat.sessionId}/clarify`, {
-                        answer: { text, graph_context: graphContext },
+                        answer: { type: "clarification", text, graph_context: graphContext },
                     });
                     await runReasoning();
                 } else {
