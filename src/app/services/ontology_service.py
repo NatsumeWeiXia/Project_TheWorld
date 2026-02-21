@@ -868,6 +868,135 @@ class OntologyService:
             engine.dispose()
         return {"created": True}
 
+    def group_analyze_entity_data(
+        self,
+        tenant_id: str,
+        class_id: int,
+        group_by: list[str],
+        metrics: list[dict],
+        filters: list[dict] | None = None,
+        page: int = 1,
+        page_size: int = 50,
+        sort_by: str | None = None,
+        sort_order: str = "desc",
+    ):
+        self.get_class(tenant_id, class_id)
+        if not group_by:
+            raise AppError(ErrorCodes.VALIDATION, "group_by cannot be empty")
+        binding, columns, column_by_name, db_url = self._entity_table_context(tenant_id, class_id)
+        engine = create_engine(db_url, future=True, pool_pre_ping=True)
+        try:
+            with engine.connect() as conn:
+                dialect_name = conn.dialect.name
+                schema_name = (binding.table_schema or "public") if dialect_name == "postgresql" else ""
+                table_ref = _quote_identifier(binding.table_name)
+                if schema_name:
+                    table_ref = f"{_quote_identifier(schema_name)}.{table_ref}"
+
+                normalized_group_by = []
+                for item in group_by:
+                    if item not in column_by_name:
+                        raise AppError(ErrorCodes.VALIDATION, f"invalid group_by field: {item}")
+                    normalized_group_by.append(item)
+
+                conditions = []
+                params = {}
+                idx = 0
+                for item in (filters or []):
+                    field = item.get("field")
+                    op = (item.get("op") or "eq").lower()
+                    if field not in column_by_name:
+                        continue
+                    field_expr = _quote_identifier(field)
+                    param_name = f"p{idx}"
+                    if op == "eq":
+                        params[param_name] = _parse_data_value(item.get("value"), column_by_name[field]["data_type"])
+                        conditions.append(f"{field_expr} = :{param_name}")
+                    elif op == "like":
+                        params[param_name] = f"%{item.get('value', '')}%"
+                        conditions.append(f"{field_expr} LIKE :{param_name}")
+                    elif op == "in":
+                        raw_values = item.get("value", [])
+                        if isinstance(raw_values, str):
+                            raw_values = [val.strip() for val in raw_values.split(",") if val.strip()]
+                        parsed_values = [
+                            _parse_data_value(val, column_by_name[field]["data_type"])
+                            for val in (raw_values or [])
+                        ]
+                        if not parsed_values:
+                            continue
+                        holders = []
+                        for n, parsed in enumerate(parsed_values):
+                            in_key = f"{param_name}_{n}"
+                            params[in_key] = parsed
+                            holders.append(f":{in_key}")
+                        conditions.append(f"{field_expr} IN ({', '.join(holders)})")
+                    idx += 1
+                where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+
+                metric_items = metrics or [{"agg": "count", "field": None, "alias": "count"}]
+                metric_exprs = []
+                metric_aliases = []
+                for index, metric in enumerate(metric_items):
+                    agg = str(metric.get("agg") or "count").lower()
+                    field = metric.get("field")
+                    alias = metric.get("alias") or f"{agg}_{field or 'all'}_{index}"
+                    alias = _sanitize_identifier(alias, default_prefix="m")
+                    if agg not in {"count", "sum", "avg", "min", "max"}:
+                        raise AppError(ErrorCodes.VALIDATION, f"invalid metric agg: {agg}")
+                    if agg == "count":
+                        if field:
+                            if field not in column_by_name:
+                                raise AppError(ErrorCodes.VALIDATION, f"invalid metric field: {field}")
+                            metric_exprs.append(f"COUNT({_quote_identifier(field)}) AS {_quote_identifier(alias)}")
+                        else:
+                            metric_exprs.append(f"COUNT(*) AS {_quote_identifier(alias)}")
+                    else:
+                        if not field or field not in column_by_name:
+                            raise AppError(ErrorCodes.VALIDATION, f"metric field is required for {agg}")
+                        metric_exprs.append(f"{agg.upper()}({_quote_identifier(field)}) AS {_quote_identifier(alias)}")
+                    metric_aliases.append(alias)
+
+                group_select_exprs = [f"{_quote_identifier(field)} AS {_quote_identifier(field)}" for field in normalized_group_by]
+                group_by_clause = ", ".join([_quote_identifier(field) for field in normalized_group_by])
+                select_clause = ", ".join(group_select_exprs + metric_exprs)
+
+                sort_candidates = set(normalized_group_by + metric_aliases)
+                safe_sort_by = sort_by if sort_by in sort_candidates else metric_aliases[0]
+                order_dir = "DESC" if str(sort_order).lower() == "desc" else "ASC"
+
+                offset = (page - 1) * page_size
+                params["limit"] = page_size
+                params["offset"] = offset
+
+                base_sql = (
+                    f"SELECT {select_clause} FROM {table_ref}{where_clause} "
+                    f"GROUP BY {group_by_clause}"
+                )
+                count_sql = text(f"SELECT COUNT(1) AS total FROM ({base_sql}) grouped_result")
+                list_sql = text(
+                    f"{base_sql} ORDER BY {_quote_identifier(safe_sort_by)} {order_dir} "
+                    f"LIMIT :limit OFFSET :offset"
+                )
+
+                total = int(conn.execute(count_sql, params).scalar() or 0)
+                rows = conn.execute(list_sql, params).mappings().all()
+                items = [dict(row) for row in rows]
+                return {
+                    "class_id": class_id,
+                    "table_name": binding.table_name,
+                    "table_schema": binding.table_schema,
+                    "columns": columns,
+                    "group_by": normalized_group_by,
+                    "metrics": metric_items,
+                    "items": items,
+                    "total": total,
+                    "page": page,
+                    "page_size": page_size,
+                }
+        finally:
+            engine.dispose()
+
     def update_entity_data(self, tenant_id: str, class_id: int, row_token: str, values: dict):
         self.get_class(tenant_id, class_id)
         binding, _columns, column_by_name, db_url = self._entity_table_context(tenant_id, class_id)

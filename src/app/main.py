@@ -5,12 +5,14 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import inspect, text
 
-from src.app.api.v1 import knowledge, mcp_graph, mcp_metadata, ontology
+from src.app.api.v1 import config, knowledge, mcp_data, mcp_graph, mcp_metadata, ontology, reasoning
 from src.app.core.config import settings
 from src.app.core.errors import AppError, ErrorCodes
 from src.app.core.response import build_response
 from src.app.infra.db.base import Base
-from src.app.infra.db.session import engine
+from src.app.infra.db.session import SessionLocal, engine
+from src.app.services.active_tenant_service import ActiveTenantService
+from src.app.services.observability.langfuse_config_service import LangfuseConfigService
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
 console_html_path = Path(__file__).parent / "ui" / "m1_console.html"
@@ -59,6 +61,15 @@ def _ensure_runtime_schema() -> None:
 @app.middleware("http")
 async def trace_middleware(request: Request, call_next):
     request.state.trace_id = request.headers.get("X-Trace-Id", f"trace_{uuid.uuid4().hex[:16]}")
+    tenant_id = (request.headers.get("X-Tenant-Id") or "").strip()
+    if tenant_id and request.url.path.startswith(settings.api_prefix):
+        db = SessionLocal()
+        try:
+            ActiveTenantService(db).touch(tenant_id)
+        except Exception:
+            db.rollback()
+        finally:
+            db.close()
     response = await call_next(request)
     response.headers["X-Trace-Id"] = request.state.trace_id
     return response
@@ -80,6 +91,11 @@ async def unknown_error_handler(request: Request, exc: Exception):
 def startup() -> None:
     Base.metadata.create_all(bind=engine)
     _ensure_runtime_schema()
+    db = SessionLocal()
+    try:
+        LangfuseConfigService(db).bootstrap_runtime_from_db()
+    finally:
+        db.close()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -118,4 +134,7 @@ def graph_workspace() -> str:
 app.include_router(ontology.router, prefix=settings.api_prefix)
 app.include_router(knowledge.router, prefix=settings.api_prefix)
 app.include_router(mcp_metadata.router, prefix=settings.api_prefix)
+app.include_router(mcp_data.router, prefix=settings.api_prefix)
 app.include_router(mcp_graph.router, prefix=settings.api_prefix)
+app.include_router(reasoning.router, prefix=settings.api_prefix)
+app.include_router(config.router, prefix=settings.api_prefix)

@@ -9,8 +9,9 @@
 1. 本体管理（Ontology / Data Attribute / Object Property / Capability）
 2. 知识模板管理（class/attribute/relation/capability/fewshot）
 3. MCP 元数据检索能力（属性匹配、本体检索、执行详情）
-4. 管理控制台页面（`/theworld/v1/console`）
-5. 知识图谱分析工作空间（`/theworld/v1/console/graph`）+ MCP Graph Tool 查询
+4. 推理会话能力（基于 `LangGraph` 编排，`LangChain` 统一 LLM 调用）
+5. 管理控制台页面（`/theworld/v1/console`）
+6. 知识图谱分析工作空间（`/theworld/v1/console/graph`）+ MCP Graph Tool 查询
 - 当前入口：
 1. API 文档：`/docs`
 2. 控制台：`/theworld/v1/console`
@@ -56,7 +57,12 @@ alembic current
 
 说明：
 1. Alembic 使用运行时配置中的数据库地址（`TW_DATABASE_URL` / `.env` / `settings.database_url`）。
-2. 当前已提供 M1 baseline 迁移：`20260218_0001`。
+2. 当前已提供迁移：
+- `20260218_0001`（M1 baseline）
+- `20260219_0002`（reasoning session/context/trace skeleton）
+- `20260219_0003`（tenant_llm_config）
+- `20260219_0004`（active_tenant）
+3. `20260219_0002~0004` 已做幂等处理（表/索引存在时跳过创建），用于兼容历史环境中先由 ORM 建表导致的 `DuplicateTable` 问题。
 
 ## 3. 系统分层与调用链
 
@@ -150,9 +156,9 @@ Project_TheWorld/
 ### 7.3 Docs
 
 - `Docs/Project_TheWorld_需求清单.md`：总体需求列表
+- `Docs/Project_TheWorld_技术选型.md`：技术选型与取舍
 - `Docs/Project_TheWorld_概要设计文档.md`：总体概要设计
 - `Docs/Project_TheWorld_环境配置.md`：环境部署说明
-- `Docs/本体推理框架技能需求.md`：本体推理与技能需求
 - `Docs/M1/Project_TheWorld_M1详细设计文档.md`：M1 详细设计
 - `Docs/M2/Project_TheWorld_M2详细设计文档.md`：M2 详细设计
 - `Docs/M3/Project_TheWorld_M3详细设计文档.md`：M3 详细设计
@@ -175,7 +181,10 @@ Project_TheWorld/
 - `src/app/api/v1/ontology.py`：本体域 CRUD、绑定、树、OWL 校验/导出、表映射等接口
 - `src/app/api/v1/knowledge.py`：知识模板与 fewshot 接口
 - `src/app/api/v1/mcp_metadata.py`：MCP 元数据检索与执行详情接口
+- `src/app/api/v1/mcp_data.py`：MCP 数据查询与分组分析接口
 - `src/app/api/v1/mcp_graph.py`：MCP Graph Tool 列表与调用接口（供页面与 LLM Tool 复用）
+- `src/app/api/v1/reasoning.py`：M2 推理会话接口（create/run/clarify/trace/cancel）
+- `src/app/api/v1/config.py`：Global Config 相关接口（tenant-llm / tenant-search-config / observability / active-tenants）
 
 #### src/app/core
 
@@ -202,6 +211,8 @@ Project_TheWorld/
 
 - `src/app/repositories/ontology_repo.py`：本体域数据访问层（class/attr/relation/capability/绑定/导出任务等）
 - `src/app/repositories/knowledge_repo.py`：知识模板与 fewshot 数据访问层
+- `src/app/repositories/reasoning_repo.py`：推理会话、任务、上下文、trace 数据访问层
+- `src/app/repositories/config_repo.py`：租户/系统运行时配置与激活租户数据访问层
 - `src/app/repositories/__init__.py`：包标记
 
 #### src/app/schemas
@@ -209,7 +220,10 @@ Project_TheWorld/
 - `src/app/schemas/ontology.py`：本体相关请求 schema
 - `src/app/schemas/knowledge.py`：知识模板相关请求 schema
 - `src/app/schemas/mcp_metadata.py`：MCP 元数据请求 schema
+- `src/app/schemas/mcp_data.py`：MCP 数据请求 schema
 - `src/app/schemas/mcp_graph.py`：MCP Graph Tool 调用请求 schema
+- `src/app/schemas/reasoning.py`：推理会话请求 schema
+- `src/app/schemas/config.py`：Global Config 请求 schema
 - `src/app/schemas/__init__.py`：包标记
 
 #### src/app/services
@@ -217,8 +231,16 @@ Project_TheWorld/
 - `src/app/services/ontology_service.py`：本体核心业务逻辑（继承、绑定、domain/range、capability domain groups、导出等）
 - `src/app/services/knowledge_service.py`：知识模板业务逻辑
 - `src/app/services/mcp_metadata_service.py`：元数据检索与详情聚合逻辑
+- `src/app/services/mcp_data_service.py`：MCP 数据查询与分组分析编排服务
 - `src/app/services/mcp_graph_service.py`：图谱查询聚合与 MCP Tool 适配（基本信息/详情/关联/继承标记）
 - `src/app/services/embedding_service.py`：Embedding 生成（当前为轻量实现）
+- `src/app/services/reasoning_service.py`：推理主链路骨架编排服务
+- `src/app/services/context_service.py`：会话上下文作用域读写服务
+- `src/app/services/trace_service.py`：推理链路事件记录与查询服务
+- `src/app/services/tenant_llm_config_service.py`：租户 LLM 配置管理（含 API Key 按 provider 隔离）
+- `src/app/services/tenant_runtime_config_service.py`：租户检索参数配置管理（PG 持久化）
+- `src/app/services/active_tenant_service.py`：激活租户登记与查询
+- `src/app/services/observability/*`：Langfuse 运行时配置与事件下沉
 - `src/app/services/__init__.py`：包标记
 
 #### src/app/ui
@@ -236,15 +258,20 @@ Project_TheWorld/
 - `tests/integration/test_m1_console_and_management_flow.py`：控制台可访问性与管理基础流程
 - `tests/integration/test_attribute_match_flow.py`：属性匹配流程
 - `tests/integration/test_fewshot_retrieval_flow.py`：fewshot 检索流程
+- `tests/integration/test_hybrid_search_flow.py`：Hybrid Search 流程
 - `tests/integration/test_ontology_detail_flow.py`：本体详情聚合与资源更新流程
 - `tests/integration/test_ontology_delete_flow.py`：删除资源联动流程
 - `tests/integration/test_ontology_owl_alignment_flow.py`：OWL 相关接口流程
+- `tests/integration/test_reasoning_session_flow.py`：推理会话骨架流程（run/clarify/trace）
+- `tests/integration/test_mcp_data_flow.py`：MCP Data 条件查询与分组分析流程
+- `tests/integration/test_tenant_llm_config_flow.py`：租户 LLM/搜索配置与 Langfuse/激活租户流程
 - `tests/integration/__init__.py`：包标记
 
 #### tests/unit
 
 - `tests/unit/test_hybrid_scoring.py`：融合评分逻辑单元测试
 - `tests/unit/test_inheritance_rules.py`：继承环检测单元测试
+- `tests/unit/test_llm_provider_factory.py`：LLM Provider 工厂单元测试
 - `tests/unit/test_schema_validation.py`：输入 schema 校验测试
 - `tests/unit/__init__.py`：包标记
 
@@ -287,12 +314,37 @@ Project_TheWorld/
   - `graph.get_object_property_details`
   - `graph.get_capability_details`
 
+### 8.5 Reasoning API（`/api/v1/reasoning`）
+
+- 会话创建：`POST /sessions`
+- 会话状态：`GET /sessions/{session_id}`
+- 执行一轮：`POST /sessions/{session_id}/run`
+- 澄清续跑：`POST /sessions/{session_id}/clarify`
+- 链路查询：`GET /sessions/{session_id}/trace`
+- 会话取消：`POST /sessions/{session_id}/cancel`
+
+### 8.6 MCP Data API（`/api/v1/mcp/data`）
+
+- 条件查询：`POST /query`
+- 分组分析：`POST /group-analysis`
+
+### 8.7 Config API（`/api/v1/config`）
+
+- 租户 LLM 配置：`GET/PUT /tenant-llm`，验证：`POST /tenant-llm:verify`
+- 租户搜索配置：`GET/PUT /tenant-search-config`
+- 可观测配置（Langfuse）：`GET/PUT /observability/langfuse`
+- 激活租户列表：`GET /active-tenants`
+
 ## 9. 当前已知工程特征
 
 - 已接入 Alembic（含 M1 baseline 迁移 `20260218_0001`），后续结构变更建议通过迁移脚本演进。
+- M2 Sprint 1 已新增 reasoning 迁移 `20260219_0002`（session/turn/task/context/trace/clarification）。
+- M2 Sprint 2~3 已新增配置相关迁移：`20260219_0003`（tenant_llm_config）、`20260219_0004`（active_tenant）。
 - 数据库结构当前仍同时依赖 ORM + 启动期兼容补列逻辑（`main.py` 中 `_ensure_runtime_schema`），建议后续逐步收敛到 Alembic。
 - 运行时会在 `startup` 尝试补齐部分兼容字段（例如 capability 的 `domain_groups_json`）。
 - 控制台前端是单文件页面，改动集中但容易冲突；建议功能拆分时优先抽组件/模块化脚本。
+- 搜索参数（`hybrid_*` 与 `backfill_batch_size`）当前以 tenant 维度持久化到 PG（`tenant_runtime_config.search_config`），不再依赖浏览器 localStorage。
+- 服务会按请求头 `X-Tenant-Id` 自动登记激活租户到 `active_tenant` 表。
 
 ## 10. 近期修改总结（2026-02）
 
@@ -460,11 +512,65 @@ Project_TheWorld/
    - 拆分为两组权重：
      - 单词搜索（query token <= 2）：`word_w_sparse/word_w_dense`
      - 语句搜索（query token > 2）：`sentence_w_sparse/sentence_w_dense`
-   - 新增 `Top-N`、`Score Gap`、`Relative Difference` 全局配置并持久化到 localStorage。
+   - 新增 `Top-N`、`Score Gap`、`Relative Difference` 与 `embedding_backfill_batch_size`，按 tenant 持久化到 PG（`tenant_runtime_config`）。
 4. 控制台与图谱搜索结果展示统一：
    - 搜索结果按接口 score 降序展示。
    - Ontologies 在“搜索态”使用列表展示（非树），在“非搜索态”保留树形结构。
    - Console 的 Ontology 树节点支持展开/收起。
+   - Graph 页面检索参数读取租户配置接口，不再读取本地 localStorage 的 `hybrid_*`。
 5. MCP Graph Tool 返回结构增强：
    - `graph.list_data_attributes` / `graph.list_ontologies` 在 `tools:call` 返回中增加 `query` 字段，返回结构为：
      - `{ "query": "...", "items": [...] }`
+
+### 10.9 M2 Sprint 1（Reasoning 主链路骨架 + Context + Trace）
+
+1. 新增推理会话 API：
+   - `POST /api/v1/reasoning/sessions`
+   - `GET /api/v1/reasoning/sessions/{session_id}`
+   - `POST /api/v1/reasoning/sessions/{session_id}/run`
+   - `POST /api/v1/reasoning/sessions/{session_id}/clarify`
+   - `GET /api/v1/reasoning/sessions/{session_id}/trace`
+   - `POST /api/v1/reasoning/sessions/{session_id}/cancel`
+2. 新增会话与追踪数据模型：
+   - `reasoning_session`
+   - `reasoning_turn`
+   - `reasoning_task`
+   - `reasoning_context`
+   - `reasoning_trace_event`
+   - `reasoning_clarification`
+3. 新增服务模块：
+   - `reasoning_service`：主链路骨架（属性匹配 -> 本体定位 -> 能力规划 -> 执行占位）
+   - `context_service`：`global/session/local/artifact` 作用域管理
+   - `trace_service`：事件化链路记录
+4. 新增迁移脚本：`alembic/versions/20260219_0002_add_reasoning_skeleton_tables.py`
+5. 新增集成测试：`tests/integration/test_reasoning_session_flow.py`（`2 passed`）
+
+### 10.10 LangChain + LangGraph 改造（本次会话）
+
+1. `reasoning` 主流程改造为 `LangGraph StateGraph` 节点编排（意图解析/属性匹配/本体定位/任务规划/执行/收敛）。
+2. 新增 `LangChain` 调用封装：`src/app/services/llm/langchain_client.py`。
+3. `reasoning` 输出新增框架标识：
+   - `orchestration_framework: langgraph`
+   - `llm_framework: langchain`
+4. 去除回退模式：环境缺失 `langgraph/langchain` 依赖时，`reasoning` 直接报错，不再降级到线性流程。
+
+### 10.11 M2 Sprint 3（Graph 右侧对话框 + MCP Data）
+
+1. Graph 页面新增右侧 `Graph Chat` 面板，支持收起/展开，默认展开。
+2. 对话支持会话创建、run、clarify 三段式调用，接口基于 `reasoning`。
+3. 对话支持携带当前图上下文（选中节点/最近焦点节点）作为 `graph_context`。
+4. 新增 MCP Data 接口：
+   - `POST /api/v1/mcp/data/query`
+   - `POST /api/v1/mcp/data/group-analysis`
+5. `reasoning` 执行节点打通数据能力：根据用户意图自动选择 query/group-analysis，并把结果写入 `model_output.data_execution`。
+
+### 10.12 Config 持久化与激活租户（本次会话）
+
+1. Global Config 中搜索参数改为 tenant 级 PG 持久化：
+   - `word_w_sparse/word_w_dense`
+   - `sentence_w_sparse/sentence_w_dense`
+   - `top_n/score_gap/relative_diff`
+   - `backfill_batch_size`
+2. 新增激活租户表 `active_tenant`，用于记录当前触达过 API 的 tenant（首见时间/最近活跃时间）。
+3. 新增接口：`GET /api/v1/config/active-tenants`。
+4. 新增迁移：`20260219_0004_add_active_tenant_table.py`；并将 `20260219_0002~0004` 调整为幂等，减少历史环境迁移冲突。

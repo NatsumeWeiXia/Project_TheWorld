@@ -257,3 +257,135 @@ class KnowledgeFewshotExample(Base):
     tags_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     embedding: Mapped[list[float] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, nullable=False)
+
+
+class ReasoningSession(Base):
+    __tablename__ = "reasoning_session"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="created")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now, nullable=False)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class ReasoningTurn(Base):
+    __tablename__ = "reasoning_turn"
+    __table_args__ = (UniqueConstraint("session_id", "turn_no", name="uk_reasoning_turn_session_no"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("reasoning_session.id"), nullable=False, index=True)
+    turn_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_input: Mapped[str] = mapped_column(Text, nullable=False)
+    model_output: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="created")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now, nullable=False)
+
+
+class ReasoningTask(Base):
+    __tablename__ = "reasoning_task"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("reasoning_session.id"), nullable=False, index=True)
+    turn_id: Mapped[int] = mapped_column(ForeignKey("reasoning_turn.id"), nullable=False, index=True)
+    task_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    task_payload: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending", index=True)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now, nullable=False)
+
+
+class ReasoningContext(Base):
+    __tablename__ = "reasoning_context"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("reasoning_session.id"), nullable=False, index=True)
+    scope: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    key: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    value_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, nullable=False)
+
+
+class ReasoningTraceEvent(Base):
+    __tablename__ = "reasoning_trace_event"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("reasoning_session.id"), nullable=False, index=True)
+    turn_id: Mapped[int | None] = mapped_column(ForeignKey("reasoning_turn.id"), index=True)
+    step: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    trace_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, nullable=False)
+
+
+class ReasoningClarification(Base):
+    __tablename__ = "reasoning_clarification"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("reasoning_session.id"), nullable=False, index=True)
+    turn_id: Mapped[int | None] = mapped_column(ForeignKey("reasoning_turn.id"), index=True)
+    question_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    answer_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now, nullable=False)
+
+
+class TenantLLMConfig(Base):
+    __tablename__ = "tenant_llm_config"
+    __table_args__ = (UniqueConstraint("tenant_id", name="uk_tenant_llm_config_tenant"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    api_key_cipher: Mapped[str] = mapped_column(Text, nullable=False)
+    base_url: Mapped[str | None] = mapped_column(String(512))
+    timeout_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=30000)
+    enable_thinking: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    fallback_provider: Mapped[str | None] = mapped_column(String(32))
+    fallback_model: Mapped[str | None] = mapped_column(String(128))
+    extra_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    status: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=1)
+    updated_by: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now, nullable=False)
+
+
+class TenantRuntimeConfig(Base):
+    __tablename__ = "tenant_runtime_config"
+    __table_args__ = (UniqueConstraint("tenant_id", name="uk_tenant_runtime_config_tenant"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    config_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now, nullable=False)
+
+
+class SystemRuntimeConfig(Base):
+    __tablename__ = "system_runtime_config"
+    __table_args__ = (UniqueConstraint("config_key", name="uk_system_runtime_config_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    config_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    config_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now, nullable=False)
+
+
+class ActiveTenant(Base):
+    __tablename__ = "active_tenant"
+    __table_args__ = (UniqueConstraint("tenant_id", name="uk_active_tenant_tenant"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=now, nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now, nullable=False)

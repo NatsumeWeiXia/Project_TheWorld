@@ -678,70 +678,348 @@
         </dialog>
 
         <dialog id="global_config_modal" class="modal">
-            <div class="modal-box max-w-md">
-                <h3 class="font-bold text-lg">Global Search Config</h3>
-                <p class="text-xs opacity-70 mt-1 mb-3">Search ranking and cutoff rules.</p>
-                <div class="space-y-3">
-                    <div class="divider my-1">单词搜索（query token <= 2）</div>
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Keyword Weight (w_sparse)</span></label>
-                        <input v-model.number="globalSearchConfig.word_w_sparse" type="number" min="0" step="0.01" class="input input-bordered w-full" />
+            <div class="modal-box max-w-3xl p-0 overflow-hidden bg-base-100 border border-base-300 shadow-2xl">
+                <!-- Modal Header -->
+                <div class="bg-slate-800 text-white p-4 flex justify-between items-center shrink-0">
+                    <h3 class="font-bold flex items-center gap-2">
+                        <i class="fas fa-cog text-primary"></i> Global Configuration
+                    </h3>
+                    <button @click="closeGlobalConfigModal" class="opacity-50 hover:opacity-100 transition-opacity"><i class="fas fa-times"></i></button>
+                </div>
+
+                <!-- Modal Body with Tabs -->
+                <div class="flex flex-col h-[70vh]">
+                    <!-- Tab Navigation -->
+                    <div class="flex bg-base-200 p-1 gap-1 shrink-0">
+                        <button v-for="tab in [
+                            { id: 'llm', name: 'LLM Settings', icon: 'fa-brain' },
+                            { id: 'observability', name: 'Observability', icon: 'fa-wave-square' },
+                            { id: 'weights', name: 'Search Weights', icon: 'fa-weight-hanging' },
+                            { id: 'limits', name: 'Ranking & Limits', icon: 'fa-filter' },
+                            { id: 'maintenance', name: 'Maintenance', icon: 'fa-tools' }
+                        ]" 
+                        :key="tab.id"
+                        @click="activeConfigTab = tab.id"
+                        :class="['flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 whitespace-nowrap', 
+                                activeConfigTab === tab.id ? 'bg-base-100 text-primary shadow-sm' : 'text-base-content/60 hover:bg-base-300']">
+                            <i :class="['fas', tab.icon]"></i>
+                            <span>{{ tab.name }}</span>
+                        </button>
                     </div>
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Vector Weight (w_dense)</span></label>
-                        <input v-model.number="globalSearchConfig.word_w_dense" type="number" min="0" step="0.01" class="input input-bordered w-full" />
-                    </div>
-                    <div class="text-xs font-mono bg-base-200 rounded px-3 py-2">
-                        Effective: sparse {{ effectiveWeightRatioWord.sparse }} / dense {{ effectiveWeightRatioWord.dense }}
-                    </div>
-                    <div class="divider my-1">语句搜索（query token > 2）</div>
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Keyword Weight (w_sparse)</span></label>
-                        <input v-model.number="globalSearchConfig.sentence_w_sparse" type="number" min="0" step="0.01" class="input input-bordered w-full" />
-                    </div>
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Vector Weight (w_dense)</span></label>
-                        <input v-model.number="globalSearchConfig.sentence_w_dense" type="number" min="0" step="0.01" class="input input-bordered w-full" />
-                    </div>
-                    <div class="text-xs font-mono bg-base-200 rounded px-3 py-2">
-                        Effective: sparse {{ effectiveWeightRatioSentence.sparse }} / dense {{ effectiveWeightRatioSentence.dense }}
-                    </div>
-                    <div class="text-[11px] opacity-60">
-                        Effective ratio is normalized by backend (w_sparse / (w_sparse + w_dense), w_dense / (w_sparse + w_dense)).
-                    </div>
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Top-N</span></label>
-                        <input v-model.number="globalSearchConfig.top_n" type="number" min="1" max="500" step="1" class="input input-bordered w-full" />
-                    </div>
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Score Gap</span></label>
-                        <input v-model.number="globalSearchConfig.score_gap" type="number" min="0" step="0.01" class="input input-bordered w-full" />
-                    </div>
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Relative Difference</span></label>
-                        <input v-model.number="globalSearchConfig.relative_diff" type="number" min="0" step="0.01" class="input input-bordered w-full" />
-                    </div>
-                    <div class="text-[11px] opacity-60">
-                        Results must satisfy all: Top-N, Score Gap, and score >= max_score * Relative Difference.
-                    </div>
-                    <div class="divider my-1">Embedding Backfill</div>
-                    <div class="form-control">
-                        <label class="label"><span class="label-text">Batch Size</span></label>
-                        <input v-model.number="globalSearchConfig.backfill_batch_size" type="number" min="1" max="5000" step="1" class="input input-bordered w-full" />
-                    </div>
-                    <button @click="triggerEmbeddingBackfill" class="btn btn-sm btn-outline" :disabled="loading">
-                        {{ loading ? 'Running...' : 'Run Offline Backfill (Class/Relation/Capability)' }}
-                    </button>
-                    <div v-if="backfillResult" class="text-xs bg-base-200 rounded px-3 py-2 space-y-1">
-                        <div>Updated Total: {{ backfillResult.updated_total }}</div>
-                        <div>Updated: ontology={{ backfillResult.updated?.ontology || 0 }}, obj-prop={{ backfillResult.updated?.['obj-prop'] || 0 }}, capability={{ backfillResult.updated?.capability || 0 }}</div>
-                        <div>Has More: {{ backfillResult.has_more_any ? 'yes' : 'no' }}</div>
+
+                    <!-- Tab Content -->
+                    <div class="flex-1 overflow-auto p-6">
+                        <!-- Tab: LLM Settings -->
+                        <div v-if="activeConfigTab === 'llm'" class="space-y-6">
+                            <div class="flex items-center gap-2 text-sm font-bold opacity-60 uppercase tracking-wider">
+                                <i class="fas fa-id-badge text-primary"></i>
+                                <span>Tenant Context</span>
+                            </div>
+                            <div class="bg-base-200/50 rounded-lg p-3 text-xs font-mono">
+                                <span class="opacity-50">Current Tenant:</span> {{ config.tenantId }}
+                            </div>
+
+                            <div class="divider">Primary LLM</div>
+                            
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="form-control">
+                                    <label class="label"><span class="label-text font-bold">Provider</span></label>
+                                    <select v-model="tenantLlmConfig.provider" @change="handlePrimaryProviderChange" class="select select-bordered select-sm w-full">
+                                        <option value="deepseek">deepseek</option>
+                                        <option value="qwen">qwen</option>
+                                    </select>
+                                </div>
+                                <div class="form-control">
+                                    <label class="label"><span class="label-text font-bold">Model</span></label>
+                                    <input v-model="tenantLlmConfig.model" class="input input-bordered input-sm w-full" placeholder="e.g. deepseek-reasoner" />
+                                </div>
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label">
+                                    <span class="label-text font-bold">API Key</span>
+                                    <span v-if="tenantLlmConfig.api_key_masked" class="label-text-alt opacity-50 font-mono">Current: {{ tenantLlmConfig.api_key_masked }}</span>
+                                </label>
+                                <input v-model="tenantLlmConfig.api_key" type="password" class="input input-bordered input-sm w-full" placeholder="Enter new key to overwrite existing one" />
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label"><span class="label-text font-bold">Base URL (Optional)</span></label>
+                                <input v-model="tenantLlmConfig.base_url" class="input input-bordered input-sm w-full" placeholder="https://api.example.com/v1" />
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="form-control">
+                                    <label class="label"><span class="label-text font-bold">Timeout (ms)</span></label>
+                                    <input v-model.number="tenantLlmConfig.timeout_ms" type="number" min="1000" step="1000" class="input input-bordered input-sm w-full" />
+                                </div>
+                                <div class="form-control">
+                                    <label class="label"><span class="label-text font-bold">Enable Thinking</span></label>
+                                    <select v-model="tenantLlmConfig.enable_thinking" class="select select-bordered select-sm w-full">
+                                        <option :value="true">Enabled</option>
+                                        <option :value="false">Disabled</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="divider">Fallback LLM</div>
+
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="form-control">
+                                    <label class="label"><span class="label-text font-bold">Fallback Provider</span></label>
+                                    <select v-model="tenantLlmConfig.fallback_provider" @change="handleFallbackProviderChange" class="select select-bordered select-sm w-full">
+                                        <option value="">(none)</option>
+                                        <option value="deepseek">deepseek</option>
+                                        <option value="qwen">qwen</option>
+                                    </select>
+                                </div>
+                                <div class="form-control">
+                                    <label class="label"><span class="label-text font-bold">Fallback Model</span></label>
+                                    <input v-model="tenantLlmConfig.fallback_model" class="input input-bordered input-sm w-full" placeholder="Optional fallback model" />
+                                </div>
+                            </div>
+
+                            <div class="pt-4 border-t flex items-center gap-4">
+                                <button @click="verifyTenantLlmConfig" class="btn btn-sm btn-outline gap-2" :disabled="loading">
+                                    <i class="fas fa-vial"></i> Verify LLM
+                                </button>
+                                <div v-if="tenantLlmVerifyResult" :class="['text-xs px-3 py-1.5 rounded-full flex items-center gap-2', tenantLlmVerifyResult.ok ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700']">
+                                    <i :class="['fas', tenantLlmVerifyResult.ok ? 'fa-check-circle' : 'fa-times-circle']"></i>
+                                    <span>{{ tenantLlmVerifyResult.ok ? 'Verification Passed' : 'Verification Failed: ' + (tenantLlmVerifyResult.error || 'Unknown error') }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab: Observability -->
+                        <div v-if="activeConfigTab === 'observability'" class="space-y-6">
+                            <div class="alert alert-info text-xs py-2 bg-blue-50 border-blue-100 text-blue-800">
+                                <i class="fas fa-info-circle"></i>
+                                <span>Langfuse config is runtime-level; updates take effect immediately for new trace events.</span>
+                            </div>
+
+                            <div class="form-control">
+                                <label class="label cursor-pointer justify-start gap-2">
+                                    <input type="checkbox" class="toggle toggle-primary toggle-sm" v-model="langfuseConfig.enabled" />
+                                    <span class="label-text font-bold">Enable Langfuse</span>
+                                </label>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="form-control">
+                                    <label class="label"><span class="label-text font-bold">Public Key</span></label>
+                                    <input v-model="langfuseConfig.public_key" class="input input-bordered input-sm w-full font-mono" placeholder="pk-lf-..." />
+                                </div>
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text font-bold">Secret Key</span>
+                                        <span v-if="langfuseConfig.secret_key_masked" class="label-text-alt opacity-50 font-mono">Current: {{ langfuseConfig.secret_key_masked }}</span>
+                                    </label>
+                                    <input v-model="langfuseConfig.secret_key" type="password" class="input input-bordered input-sm w-full font-mono" placeholder="sk-lf-... (leave empty to keep)" />
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="form-control">
+                                    <label class="label"><span class="label-text font-bold">Host</span></label>
+                                    <input v-model="langfuseConfig.host" class="input input-bordered input-sm w-full font-mono" placeholder="http://localhost:3000" />
+                                </div>
+                                <div class="form-control">
+                                    <label class="label"><span class="label-text font-bold">Environment</span></label>
+                                    <input v-model="langfuseConfig.environment" class="input input-bordered input-sm w-full font-mono" placeholder="dev / prod" />
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="form-control">
+                                    <label class="label"><span class="label-text font-bold">Release</span></label>
+                                    <input v-model="langfuseConfig.release" class="input input-bordered input-sm w-full font-mono" placeholder="e.g. v0.3.1" />
+                                </div>
+                                <div class="form-control">
+                                    <label class="label"><span class="label-text font-bold">Audit Payload Max Chars</span></label>
+                                    <input v-model.number="langfuseConfig.audit_payload_max_chars" type="number" min="2000" max="200000" step="1000" class="input input-bordered input-sm w-full font-mono" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab: Search Weights -->
+                        <div v-if="activeConfigTab === 'weights'" class="space-y-8">
+                            <div class="alert alert-info text-xs py-2 bg-blue-50 border-blue-100 text-blue-800">
+                                <i class="fas fa-info-circle"></i>
+                                <span>Sparse (Keyword) and Dense (Vector) weights define how search results are ranked.</span>
+                            </div>
+
+                            <div class="space-y-4">
+                                <div class="flex items-center justify-between">
+                                    <h4 class="font-bold text-sm">Word Search (Token &le; 2)</h4>
+                                    <span class="badge badge-sm badge-ghost font-mono">Word Mode</span>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4 bg-base-200/30 p-4 rounded-xl border border-base-200">
+                                    <div class="form-control">
+                                        <label class="label"><span class="label-text text-xs opacity-60 font-bold">Keyword Weight (w_sparse)</span></label>
+                                        <input v-model.number="globalSearchConfig.word_w_sparse" type="number" min="0" step="0.01" class="input input-bordered input-sm w-full" />
+                                    </div>
+                                    <div class="form-control">
+                                        <label class="label"><span class="label-text text-xs opacity-60 font-bold">Vector Weight (w_dense)</span></label>
+                                        <input v-model.number="globalSearchConfig.word_w_dense" type="number" min="0" step="0.01" class="input input-bordered input-sm w-full" />
+                                    </div>
+                                    <div class="col-span-2 pt-2 border-t border-base-200 mt-2">
+                                        <div class="flex justify-between items-center text-[10px] font-mono opacity-60">
+                                            <span>Effective Ratio:</span>
+                                            <div class="flex gap-4">
+                                                <span>Sparse: {{ effectiveWeightRatioWord.sparse }}</span>
+                                                <span>Dense: {{ effectiveWeightRatioWord.dense }}</span>
+                                            </div>
+                                        </div>
+                                        <div class="w-full bg-base-200 h-1 rounded-full mt-2 overflow-hidden flex">
+                                            <div class="h-full bg-primary" :style="{ width: (effectiveWeightRatioWord.sparse * 100) + '%' }"></div>
+                                            <div class="h-full bg-accent" :style="{ width: (effectiveWeightRatioWord.dense * 100) + '%' }"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="space-y-4">
+                                <div class="flex items-center justify-between">
+                                    <h4 class="font-bold text-sm">Sentence Search (Token > 2)</h4>
+                                    <span class="badge badge-sm badge-ghost font-mono">Semantic Mode</span>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4 bg-base-200/30 p-4 rounded-xl border border-base-200">
+                                    <div class="form-control">
+                                        <label class="label"><span class="label-text text-xs opacity-60 font-bold">Keyword Weight (w_sparse)</span></label>
+                                        <input v-model.number="globalSearchConfig.sentence_w_sparse" type="number" min="0" step="0.01" class="input input-bordered input-sm w-full" />
+                                    </div>
+                                    <div class="form-control">
+                                        <label class="label"><span class="label-text text-xs opacity-60 font-bold">Vector Weight (w_dense)</span></label>
+                                        <input v-model.number="globalSearchConfig.sentence_w_dense" type="number" min="0" step="0.01" class="input input-bordered input-sm w-full" />
+                                    </div>
+                                    <div class="col-span-2 pt-2 border-t border-base-200 mt-2">
+                                        <div class="flex justify-between items-center text-[10px] font-mono opacity-60">
+                                            <span>Effective Ratio:</span>
+                                            <div class="flex gap-4">
+                                                <span>Sparse: {{ effectiveWeightRatioSentence.sparse }}</span>
+                                                <span>Dense: {{ effectiveWeightRatioSentence.dense }}</span>
+                                            </div>
+                                        </div>
+                                        <div class="w-full bg-base-200 h-1 rounded-full mt-2 overflow-hidden flex">
+                                            <div class="h-full bg-primary" :style="{ width: (effectiveWeightRatioSentence.sparse * 100) + '%' }"></div>
+                                            <div class="h-full bg-accent" :style="{ width: (effectiveWeightRatioSentence.dense * 100) + '%' }"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab: Ranking & Limits -->
+                        <div v-if="activeConfigTab === 'limits'" class="space-y-6">
+                            <div class="section-card p-4 space-y-4">
+                                <div class="form-control">
+                                    <label class="label">
+                                        <span class="label-text font-bold">Top-N Results</span>
+                                        <span class="label-text-alt opacity-50">1 - 500</span>
+                                    </label>
+                                    <div class="flex items-center gap-4">
+                                        <input type="range" min="1" max="500" v-model.number="globalSearchConfig.top_n" class="range range-xs range-primary flex-1" />
+                                        <input v-model.number="globalSearchConfig.top_n" type="number" class="input input-bordered input-xs w-20 text-center font-mono" />
+                                    </div>
+                                    <label class="label"><span class="label-text-alt opacity-50">Maximum number of candidates retrieved before reranking.</span></label>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-6">
+                                    <div class="form-control">
+                                        <label class="label"><span class="label-text font-bold">Score Gap</span></label>
+                                        <input v-model.number="globalSearchConfig.score_gap" type="number" min="0" step="0.01" class="input input-bordered input-sm w-full font-mono" />
+                                        <label class="label"><span class="label-text-alt opacity-50 text-[10px]">Filter out results with large score drops.</span></label>
+                                    </div>
+                                    <div class="form-control">
+                                        <label class="label"><span class="label-text font-bold">Relative Difference</span></label>
+                                        <input v-model.number="globalSearchConfig.relative_diff" type="number" min="0" step="0.01" class="input input-bordered input-sm w-full font-mono" />
+                                        <label class="label"><span class="label-text-alt opacity-50 text-[10px]">Score threshold relative to max score.</span></label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-base-200 p-4 rounded-lg">
+                                <h5 class="text-xs font-bold uppercase opacity-50 mb-2">Filtering Logic</h5>
+                                <p class="text-[11px] leading-relaxed opacity-70">
+                                    Results must satisfy <strong>all</strong> of the following conditions:
+                                </p>
+                                <ul class="list-disc list-inside text-[11px] mt-2 space-y-1 opacity-70 ml-2">
+                                    <li>Within the <strong>Top-N</strong> candidates</li>
+                                    <li>Difference with previous score &le; <strong>Score Gap</strong> (if > 0)</li>
+                                    <li>Score &ge; <strong>Max Score</strong> &times; (1 - <strong>Relative Difference</strong>)</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- Tab: Maintenance -->
+                        <div v-if="activeConfigTab === 'maintenance'" class="space-y-6">
+                            <div class="section-card border-l-4 border-l-primary p-4 bg-primary/5">
+                                <div class="flex items-center gap-3 mb-4">
+                                    <div class="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary">
+                                        <i class="fas fa-database fa-lg"></i>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-bold">Embedding Backfill</h4>
+                                        <p class="text-xs opacity-60">Synchronize vector database with ontology changes.</p>
+                                    </div>
+                                </div>
+
+                                <div class="space-y-4">
+                                    <div class="form-control">
+                                        <label class="label"><span class="label-text font-bold">Batch Size</span></label>
+                                        <input v-model.number="globalSearchConfig.backfill_batch_size" type="number" min="1" max="5000" step="1" class="input input-bordered input-sm w-full max-w-xs font-mono" />
+                                        <label class="label"><span class="label-text-alt opacity-50">Recommended: 200 - 500</span></label>
+                                    </div>
+
+                                    <button @click="triggerEmbeddingBackfill" class="btn btn-sm btn-primary gap-2" :disabled="loading">
+                                        <span v-if="loading" class="loading loading-spinner loading-xs"></span>
+                                        <i v-else class="fas fa-sync-alt"></i>
+                                        Run Offline Backfill
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div v-if="backfillResult" class="bg-base-200 rounded-lg p-4 space-y-3 shadow-inner">
+                                <div class="flex items-center justify-between border-b border-base-300 pb-2">
+                                    <span class="text-xs font-bold uppercase opacity-50">Last Result</span>
+                                    <span :class="['badge badge-sm', backfillResult.has_more_any ? 'badge-warning' : 'badge-success']">
+                                        {{ backfillResult.has_more_any ? 'Has More Data' : 'All Synchronized' }}
+                                    </span>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div class="stat p-0">
+                                        <div class="stat-label text-[10px] opacity-50">Total Updated</div>
+                                        <div class="stat-value text-xl">{{ backfillResult.updated_total }}</div>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <div class="flex justify-between text-[10px]">
+                                            <span class="opacity-50">Ontology:</span>
+                                            <span class="font-mono">{{ backfillResult.updated?.ontology || 0 }}</span>
+                                        </div>
+                                        <div class="flex justify-between text-[10px]">
+                                            <span class="opacity-50">Obj-Prop:</span>
+                                            <span class="font-mono">{{ backfillResult.updated?.['obj-prop'] || 0 }}</span>
+                                        </div>
+                                        <div class="flex justify-between text-[10px]">
+                                            <span class="opacity-50">Capability:</span>
+                                            <span class="font-mono">{{ backfillResult.updated?.capability || 0 }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="modal-action">
-                    <button @click="resetGlobalSearchWeights" class="btn btn-outline">Reset Weight Defaults</button>
-                    <button @click="closeGlobalConfigModal" class="btn btn-ghost">Cancel</button>
-                    <button @click="saveGlobalConfig" class="btn btn-primary">Save</button>
+
+                <!-- Modal Actions -->
+                <div class="p-4 bg-slate-50 border-t flex justify-between items-center shrink-0">
+                    <button @click="resetGlobalSearchWeights" class="btn btn-sm btn-outline btn-ghost gap-2 text-xs">
+                        <i class="fas fa-undo"></i> Reset Search Defaults
+                    </button>
+                    <div class="flex gap-2">
+                        <button @click="closeGlobalConfigModal" class="btn btn-sm btn-ghost px-6">Cancel</button>
+                        <button @click="saveGlobalConfig" class="btn btn-sm btn-primary px-10 shadow-lg shadow-primary/20">Save All Changes</button>
+                    </div>
                 </div>
             </div>
         </dialog>
@@ -793,6 +1071,7 @@
             components: { TreeItem },
             setup() {
                 const activeTab = ref('ontology');
+                const activeConfigTab = ref('llm');
                 const selectedId = ref(null);
                 const selectedItem = ref(null);
                 const searchQuery = ref('');
@@ -817,18 +1096,52 @@
                     tenantId: localStorage.getItem('tenantId') || 'tenant-a',
                     token: localStorage.getItem('token') || 'test-token'
                 });
-                const legacyWSparse = localStorage.getItem('hybrid_w_sparse');
-                const legacyWDense = localStorage.getItem('hybrid_w_dense');
                 const globalSearchConfig = reactive({
-                    word_w_sparse: Number(localStorage.getItem('hybrid_word_w_sparse') || legacyWSparse || '0.45'),
-                    word_w_dense: Number(localStorage.getItem('hybrid_word_w_dense') || legacyWDense || '0.55'),
-                    sentence_w_sparse: Number(localStorage.getItem('hybrid_sentence_w_sparse') || '0.25'),
-                    sentence_w_dense: Number(localStorage.getItem('hybrid_sentence_w_dense') || '0.75'),
-                    top_n: Number(localStorage.getItem('hybrid_top_n') || '200'),
-                    score_gap: Number(localStorage.getItem('hybrid_score_gap') || '0'),
-                    relative_diff: Number(localStorage.getItem('hybrid_relative_diff') || '0'),
-                    backfill_batch_size: Number(localStorage.getItem('embedding_backfill_batch_size') || '200'),
+                    word_w_sparse: 0.45,
+                    word_w_dense: 0.55,
+                    sentence_w_sparse: 0.25,
+                    sentence_w_dense: 0.75,
+                    top_n: 200,
+                    score_gap: 0,
+                    relative_diff: 0,
+                    backfill_batch_size: 200,
                 });
+                const tenantLlmConfig = reactive({
+                    provider: 'deepseek',
+                    model: 'deepseek-reasoner',
+                    api_key: '',
+                    api_key_masked: '',
+                    api_key_masked_by_provider: {},
+                    base_url: '',
+                    timeout_ms: 30000,
+                    enable_thinking: true,
+                    fallback_provider: '',
+                    fallback_model: '',
+                    extra_json: {},
+                });
+                const langfuseConfig = reactive({
+                    enabled: false,
+                    public_key: '',
+                    secret_key: '',
+                    secret_key_masked: '',
+                    host: 'http://localhost:3000',
+                    environment: 'dev',
+                    release: '',
+                    audit_payload_max_chars: 24000,
+                });
+                const llmProviderPresets = Object.freeze({
+                    deepseek: {
+                        model: 'deepseek-reasoner',
+                        base_url: 'https://api.deepseek.com',
+                        enable_thinking: false,
+                    },
+                    qwen: {
+                        model: 'qwen3.5-plus',
+                        base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+                        enable_thinking: true,
+                    },
+                });
+                const tenantLlmVerifyResult = ref(null);
                 const backfillResult = ref(null);
 
                 const tabs = [
@@ -1154,9 +1467,177 @@
                 };
                 const toggleTheme = () => applyTheme(theme.value === 'dark' ? 'light' : 'dark');
                 const openGraphWorkspace = () => window.open('/theworld/v1/console/graph', '_blank', 'noopener,noreferrer');
-                const openGlobalConfigModal = () => document.getElementById('global_config_modal').showModal();
+                const applyPrimaryProviderPreset = (provider) => {
+                    const preset = llmProviderPresets[String(provider || '').trim().toLowerCase()];
+                    if (!preset) return;
+                    tenantLlmConfig.model = preset.model;
+                    tenantLlmConfig.base_url = preset.base_url;
+                    tenantLlmConfig.enable_thinking = !!preset.enable_thinking;
+                };
+                const handlePrimaryProviderChange = () => {
+                    applyPrimaryProviderPreset(tenantLlmConfig.provider);
+                    const provider = String(tenantLlmConfig.provider || '').trim().toLowerCase();
+                    tenantLlmConfig.api_key = '';
+                    tenantLlmConfig.api_key_masked = tenantLlmConfig.api_key_masked_by_provider?.[provider] || '';
+                };
+                const handleFallbackProviderChange = () => {
+                    const provider = String(tenantLlmConfig.fallback_provider || '').trim().toLowerCase();
+                    if (!provider) {
+                        tenantLlmConfig.fallback_model = '';
+                        return;
+                    }
+                    const preset = llmProviderPresets[provider];
+                    if (preset) tenantLlmConfig.fallback_model = preset.model;
+                };
+                const loadTenantLlmConfig = async () => {
+                    const res = await call('GET', '/api/v1/config/tenant-llm');
+                    if (!res) return;
+                    tenantLlmConfig.provider = res.provider || 'deepseek';
+                    tenantLlmConfig.model = res.model || 'deepseek-reasoner';
+                    tenantLlmConfig.api_key = '';
+                    tenantLlmConfig.api_key_masked_by_provider = res.api_key_masked_by_provider || {};
+                    tenantLlmConfig.api_key_masked = tenantLlmConfig.api_key_masked_by_provider?.[tenantLlmConfig.provider] || res.api_key_masked || '';
+                    tenantLlmConfig.base_url = res.base_url || '';
+                    tenantLlmConfig.timeout_ms = Number(res.timeout_ms || 30000);
+                    tenantLlmConfig.enable_thinking = !!res.enable_thinking;
+                    tenantLlmConfig.fallback_provider = res.fallback_provider || '';
+                    tenantLlmConfig.fallback_model = res.fallback_model || '';
+                    tenantLlmConfig.extra_json = res.extra_json || {};
+                    tenantLlmVerifyResult.value = null;
+                };
+                const loadLangfuseConfig = async () => {
+                    const res = await call('GET', '/api/v1/config/observability/langfuse');
+                    if (!res) return;
+                    langfuseConfig.enabled = !!res.enabled;
+                    langfuseConfig.public_key = res.public_key || '';
+                    langfuseConfig.secret_key = '';
+                    langfuseConfig.secret_key_masked = res.secret_key_masked || '';
+                    langfuseConfig.host = res.host || 'http://localhost:3000';
+                    langfuseConfig.environment = res.environment || 'dev';
+                    langfuseConfig.release = res.release || '';
+                    langfuseConfig.audit_payload_max_chars = Number(res.audit_payload_max_chars || 24000);
+                };
+                const loadTenantSearchConfig = async () => {
+                    const res = await call('GET', '/api/v1/config/tenant-search-config');
+                    if (!res) return;
+                    globalSearchConfig.word_w_sparse = Number(res.word_w_sparse ?? globalSearchConfig.word_w_sparse);
+                    globalSearchConfig.word_w_dense = Number(res.word_w_dense ?? globalSearchConfig.word_w_dense);
+                    globalSearchConfig.sentence_w_sparse = Number(res.sentence_w_sparse ?? globalSearchConfig.sentence_w_sparse);
+                    globalSearchConfig.sentence_w_dense = Number(res.sentence_w_dense ?? globalSearchConfig.sentence_w_dense);
+                    globalSearchConfig.top_n = Number(res.top_n ?? globalSearchConfig.top_n);
+                    globalSearchConfig.score_gap = Number(res.score_gap ?? globalSearchConfig.score_gap);
+                    globalSearchConfig.relative_diff = Number(res.relative_diff ?? globalSearchConfig.relative_diff);
+                    globalSearchConfig.backfill_batch_size = Number(res.backfill_batch_size ?? globalSearchConfig.backfill_batch_size);
+                };
+                const openGlobalConfigModal = async () => {
+                    await loadTenantLlmConfig();
+                    await loadTenantSearchConfig();
+                    await loadLangfuseConfig();
+                    document.getElementById('global_config_modal').showModal();
+                };
                 const closeGlobalConfigModal = () => document.getElementById('global_config_modal').close();
+                const verifyTenantLlmConfig = async () => {
+                    const payload = {
+                        provider: tenantLlmConfig.provider || undefined,
+                        model: tenantLlmConfig.model || undefined,
+                        api_key: tenantLlmConfig.api_key || undefined,
+                        base_url: tenantLlmConfig.base_url || undefined,
+                        timeout_ms: Number(tenantLlmConfig.timeout_ms) || undefined,
+                    };
+                    const res = await call('POST', '/api/v1/config/tenant-llm:verify', payload);
+                    if (!res) return;
+                    tenantLlmVerifyResult.value = res;
+                    toast(res.ok ? 'LLM verify success' : `LLM verify failed: ${res.error || 'unknown'}`, res.ok ? 'success' : 'error');
+                };
+                const saveTenantLlmConfig = async () => {
+                    if (!tenantLlmConfig.provider || !tenantLlmConfig.model) {
+                        toast('Provider/Model is required', 'error');
+                        return false;
+                    }
+                    const currentProvider = String(tenantLlmConfig.provider || '').trim().toLowerCase();
+                    const hasCurrentProviderKey = !!(
+                        tenantLlmConfig.api_key
+                        || tenantLlmConfig.api_key_masked
+                        || tenantLlmConfig.api_key_masked_by_provider?.[currentProvider]
+                    );
+                    if (!hasCurrentProviderKey) {
+                        toast('API Key is required for first-time setup', 'error');
+                        return false;
+                    }
+                    const payload = {
+                        provider: tenantLlmConfig.provider,
+                        model: tenantLlmConfig.model,
+                        api_key: tenantLlmConfig.api_key || undefined,
+                        base_url: tenantLlmConfig.base_url || null,
+                        timeout_ms: Math.max(1000, Number(tenantLlmConfig.timeout_ms) || 30000),
+                        enable_thinking: !!tenantLlmConfig.enable_thinking,
+                        fallback_provider: tenantLlmConfig.fallback_provider || null,
+                        fallback_model: tenantLlmConfig.fallback_model || null,
+                        extra_json: tenantLlmConfig.extra_json || {},
+                        status: 1,
+                    };
+                    const res = await call('PUT', '/api/v1/config/tenant-llm', payload);
+                    if (!res) return false;
+                    tenantLlmConfig.api_key = '';
+                    tenantLlmConfig.api_key_masked_by_provider = res.api_key_masked_by_provider || tenantLlmConfig.api_key_masked_by_provider || {};
+                    tenantLlmConfig.api_key_masked = tenantLlmConfig.api_key_masked_by_provider?.[currentProvider] || res.api_key_masked || tenantLlmConfig.api_key_masked;
+                    tenantLlmConfig.extra_json = res.extra_json || tenantLlmConfig.extra_json || {};
+                    return true;
+                };
+                const saveLangfuseConfig = async () => {
+                    const nextEnabled = !!langfuseConfig.enabled;
+                    const nextPublic = String(langfuseConfig.public_key || '').trim();
+                    const hasSecret = !!(String(langfuseConfig.secret_key || '').trim() || String(langfuseConfig.secret_key_masked || '').trim());
+                    if (nextEnabled && (!nextPublic || !hasSecret)) {
+                        toast('Langfuse enabled requires Public Key and Secret Key', 'error');
+                        return false;
+                    }
+                    const payload = {
+                        enabled: nextEnabled,
+                        public_key: nextPublic || null,
+                        secret_key: String(langfuseConfig.secret_key || '').trim() || null,
+                        host: String(langfuseConfig.host || '').trim() || null,
+                        environment: String(langfuseConfig.environment || '').trim() || null,
+                        release: String(langfuseConfig.release || '').trim() || null,
+                        audit_payload_max_chars: Math.max(2000, Math.min(200000, Number(langfuseConfig.audit_payload_max_chars) || 24000)),
+                    };
+                    const res = await call('PUT', '/api/v1/config/observability/langfuse', payload);
+                    if (!res) return false;
+                    langfuseConfig.enabled = !!res.enabled;
+                    langfuseConfig.public_key = res.public_key || '';
+                    langfuseConfig.secret_key = '';
+                    langfuseConfig.secret_key_masked = res.secret_key_masked || langfuseConfig.secret_key_masked;
+                    langfuseConfig.host = res.host || langfuseConfig.host || 'http://localhost:3000';
+                    langfuseConfig.environment = res.environment || langfuseConfig.environment || 'dev';
+                    langfuseConfig.release = res.release || '';
+                    langfuseConfig.audit_payload_max_chars = Number(res.audit_payload_max_chars || langfuseConfig.audit_payload_max_chars || 24000);
+                    return true;
+                };
+                const saveTenantSearchConfig = async () => {
+                    const payload = {
+                        word_w_sparse: Number(globalSearchConfig.word_w_sparse),
+                        word_w_dense: Number(globalSearchConfig.word_w_dense),
+                        sentence_w_sparse: Number(globalSearchConfig.sentence_w_sparse),
+                        sentence_w_dense: Number(globalSearchConfig.sentence_w_dense),
+                        top_n: Number(globalSearchConfig.top_n),
+                        score_gap: Number(globalSearchConfig.score_gap),
+                        relative_diff: Number(globalSearchConfig.relative_diff),
+                        backfill_batch_size: Number(globalSearchConfig.backfill_batch_size),
+                    };
+                    const res = await call('PUT', '/api/v1/config/tenant-search-config', payload);
+                    if (!res) return false;
+                    globalSearchConfig.word_w_sparse = Number(res.word_w_sparse);
+                    globalSearchConfig.word_w_dense = Number(res.word_w_dense);
+                    globalSearchConfig.sentence_w_sparse = Number(res.sentence_w_sparse);
+                    globalSearchConfig.sentence_w_dense = Number(res.sentence_w_dense);
+                    globalSearchConfig.top_n = Number(res.top_n);
+                    globalSearchConfig.score_gap = Number(res.score_gap);
+                    globalSearchConfig.relative_diff = Number(res.relative_diff);
+                    globalSearchConfig.backfill_batch_size = Number(res.backfill_batch_size);
+                    return true;
+                };
                 const saveGlobalConfig = () => {
+                    (async () => {
                     const wordWS = Number(globalSearchConfig.word_w_sparse);
                     const wordWD = Number(globalSearchConfig.word_w_dense);
                     const sentenceWS = Number(globalSearchConfig.sentence_w_sparse);
@@ -1177,17 +1658,16 @@
                     globalSearchConfig.top_n = topN;
                     globalSearchConfig.score_gap = Number(scoreGap.toFixed(4));
                     globalSearchConfig.relative_diff = Number(relativeDiff.toFixed(4));
-                    localStorage.setItem('hybrid_word_w_sparse', String(globalSearchConfig.word_w_sparse));
-                    localStorage.setItem('hybrid_word_w_dense', String(globalSearchConfig.word_w_dense));
-                    localStorage.setItem('hybrid_sentence_w_sparse', String(globalSearchConfig.sentence_w_sparse));
-                    localStorage.setItem('hybrid_sentence_w_dense', String(globalSearchConfig.sentence_w_dense));
-                    localStorage.setItem('hybrid_top_n', String(globalSearchConfig.top_n));
-                    localStorage.setItem('hybrid_score_gap', String(globalSearchConfig.score_gap));
-                    localStorage.setItem('hybrid_relative_diff', String(globalSearchConfig.relative_diff));
-                    localStorage.setItem('embedding_backfill_batch_size', String(Math.max(1, Number(globalSearchConfig.backfill_batch_size) || 200)));
-                    toast('Global search config saved');
+                    const searchSaved = await saveTenantSearchConfig();
+                    if (!searchSaved) return;
+                    const llmSaved = await saveTenantLlmConfig();
+                    if (!llmSaved) return;
+                    const langfuseSaved = await saveLangfuseConfig();
+                    if (!langfuseSaved) return;
+                    toast('Global config saved');
                     closeGlobalConfigModal();
                     runHybridSearch();
+                    })();
                 };
                 const resetGlobalSearchWeights = () => {
                     globalSearchConfig.word_w_sparse = 0.45;
@@ -1198,7 +1678,6 @@
                 const triggerEmbeddingBackfill = async () => {
                     const batchSize = Math.max(1, Math.min(5000, Number(globalSearchConfig.backfill_batch_size) || 200));
                     globalSearchConfig.backfill_batch_size = batchSize;
-                    localStorage.setItem('embedding_backfill_batch_size', String(batchSize));
                     const res = await call('POST', '/api/v1/ontology/embeddings:backfill', {
                         resource_types: ['ontology', 'obj-prop', 'capability'],
                         batch_size: batchSize,
@@ -1574,7 +2053,7 @@
                 watch(config, () => { localStorage.setItem('tenantId', config.tenantId); localStorage.setItem('token', config.token); });
 
                 return {
-                    tabs, activeTab, currentTabName, currentTabIcon, changeTab,
+                    tabs, activeTab, activeConfigTab, currentTabName, currentTabIcon, changeTab,
                     ontologyTree, flatOntologies, dataAttrs, objectProps, capabilities,
                     selectedId, selectedItem, editForm, createForm, manageData,
                     searchQuery, attrSearchQuery, filteredTree, filteredOntologyList, showOntologySearchResultList, filteredList, filteredAllAttrs, flatClassTreeWithDepth,
@@ -1591,7 +2070,10 @@
                     owlValidate, owlExport, config,
                     isDarkTheme, toggleTheme, openGraphWorkspace,
                     globalSearchConfig, openGlobalConfigModal, closeGlobalConfigModal, saveGlobalConfig,
-                    resetGlobalSearchWeights, effectiveWeightRatioWord, effectiveWeightRatioSentence, triggerEmbeddingBackfill, backfillResult
+                    resetGlobalSearchWeights, effectiveWeightRatioWord, effectiveWeightRatioSentence, triggerEmbeddingBackfill, backfillResult,
+                    tenantLlmConfig, verifyTenantLlmConfig, tenantLlmVerifyResult,
+                    langfuseConfig,
+                    handlePrimaryProviderChange, handleFallbackProviderChange
                 };
             }
         }).mount('#app');

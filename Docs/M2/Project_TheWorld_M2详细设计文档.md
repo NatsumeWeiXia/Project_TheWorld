@@ -1,231 +1,139 @@
-# Project_TheWorld M2 详细设计文档（基于当前 M1 实现）
+# Project_TheWorld M2 详细设计文档（按当前实现更新）
 
 ## 1. 文档目标
 
-在 M1 已完成“本体建模 + 知识管理 + 元数据 MCP + Console/Graph + Hybrid Search”的基础上，M2 目标是补齐“推理引导主链路”能力：
+本文档描述 M2 在当前代码中的实际落地形态，覆盖：
 
-1. 从用户输入自动收敛到本体与能力。
-2. 支持澄清、多候选选择、失败恢复。
-3. 提供可追踪的推理执行记录。
-4. 保持与当前单体 FastAPI 工程兼容，避免推倒重来。
-
----
-
-## 2. 基线与约束
-
-### 2.1 当前基线（来自 M1）
-
-1. 已有本体域 CRUD、绑定、OWL、实体表映射、数据管理。
-2. 已有知识模板与 fewshot 管理。
-3. 已有 MCP Metadata 四类接口。
-4. 已有 MCP Graph Tool 与图谱工作台。
-5. 已有 Hybrid Search（score、top_n、gap、relative_diff、pg_trgm 可选）。
-6. 已有 Alembic baseline（`20260218_0001`）。
-
-### 2.2 M2 设计约束
-
-1. 继续采用单体服务（`src/app`）优先，避免提前拆微服务。
-2. M2 默认不引入复杂并行子会话调度（放 M3）。
-3. 所有新增能力必须复用现有 ontology/knowledge/mcp 服务层，避免重复实现。
+1. 推理会话主链路（LangGraph + LangChain）。
+2. 会话上下文与链路审计（DB Trace + Langfuse Sink）。
+3. Graph Chat 与 MCP Data 的联动执行。
+4. Global Config 中与 M2 相关的租户级配置持久化能力。
 
 ---
 
-## 3. M2 范围定义
+## 2. 当前落地范围
 
-### 3.1 In Scope（本阶段实现目标）
+### 2.1 已实现（In Scope）
 
-1. 推理编排主链路（单会话、串行任务）。
-2. 意图到本体能力的引导流程（2.2 核心链路）。
-3. 澄清机制（无匹配/多匹配主动提问）。
-4. 错误恢复机制（参数修正、重试、候选路径切换）。
-5. 上下文作用域（global/session/local/artifacts）与持久化。
-6. 推理链路追踪（会话、步骤、MCP 调用、错误事件）。
-7. 系统级数据获取能力补齐（2.1 中“条件查询/分组分析”的统一入口，先覆盖物理表本体）。
+1. `reasoning` 会话 API（create/get/run/clarify/trace/cancel）。
+2. LangGraph 串行节点编排：意图解析 -> 属性匹配 -> 本体定位 -> 任务规划 -> 执行 -> 收敛。
+3. 澄清机制（无属性/无本体/无能力/空任务）。
+4. 数据执行能力：`mcp.data.query` / `mcp.data.group_analysis`。
+5. 会话上下文持久化（`global/session/local/artifact`）。
+6. 事件化链路审计（`reasoning_trace_event`）与 Graph 页 Audit 可视化。
+7. Langfuse 可选下沉（开启配置后同步上报审计事件）。
+8. 租户 LLM 配置、租户搜索配置的数据库持久化。
+9. 激活租户登记（`active_tenant`）与查询接口。
 
-### 3.2 Out of Scope（M3+）
+### 2.2 未实现（Out of Scope）
 
-1. 多子会话并行与递归编排（2.4 高阶能力）。
-2. 通用 Data Virtualization（Text-to-SQL + Text-to-Request 全模式）。
-3. 图形化链路画布与高级运维看板。
-4. GraphRAG/Re-ranking/检索路由器。
+1. 多子会话并行编排。
+2. 通用 Text-to-SQL/跨源数据虚拟化路由。
+3. 完整可观测三件套（metrics/span/log）统一平台化治理。
 
 ---
 
-## 4. 目标架构（M2）
+## 3. 代码结构与调用链
+
+### 3.1 核心模块
+
+1. API：
+   - `src/app/api/v1/reasoning.py`
+   - `src/app/api/v1/mcp_data.py`
+   - `src/app/api/v1/config.py`
+2. Service：
+   - `src/app/services/reasoning_service.py`
+   - `src/app/services/context_service.py`
+   - `src/app/services/trace_service.py`
+   - `src/app/services/mcp_data_service.py`
+   - `src/app/services/tenant_llm_config_service.py`
+   - `src/app/services/tenant_runtime_config_service.py`
+   - `src/app/services/observability/langfuse_sink.py`
+3. Repository：
+   - `src/app/repositories/reasoning_repo.py`
+   - `src/app/repositories/config_repo.py`
+4. Schema：
+   - `src/app/schemas/reasoning.py`
+   - `src/app/schemas/mcp_data.py`
+   - `src/app/schemas/config.py`
+
+### 3.2 请求调用链（run）
 
 ```mermaid
 flowchart LR
-U[User/API Caller] --> API[FastAPI]
-API --> ORCH[Reasoning Service]
-ORCH --> MM[MCP Metadata Service]
-ORCH --> O[Ontology Service]
-ORCH --> K[Knowledge Service]
-ORCH --> DS[Data Query Service]
-ORCH --> TS[Trace Service]
-ORCH --> CS[Context Service]
-CS --> DB[(PostgreSQL/SQLite)]
-TS --> DB
-MM --> DB
-O --> DB
-K --> DB
-DS --> EDB[(Entity DB)]
-```
-
-设计说明：
-1. `Reasoning Service` 作为 M2 新核心模块，编排已有服务能力。
-2. `Context Service` 与 `Trace Service` 先落库存储（可后续接 Redis/OTel）。
-
----
-
-## 5. 推理状态模型
-
-### 5.1 会话状态
-
-1. `created`
-2. `understanding`
-3. `locating`
-4. `planning`
-5. `executing`
-6. `waiting_clarification`
-7. `recovering`
-8. `completed`
-9. `failed`
-
-### 5.2 AgentState（逻辑结构）
-
-```python
-class AgentState(TypedDict):
-    session_id: str
-    tenant_id: str
-    user_input: str
-    normalized_query: str
-    selected_attributes: list[dict]
-    candidate_ontologies: list[dict]
-    candidate_tasks: list[dict]
-    current_task: dict | None
-    clarification: dict | None
-    recovery: dict | None
-    context_refs: dict
-    final_answer: dict | None
+U[Client/Graph Chat] --> R1[/POST reasoning run/]
+R1 --> RS[ReasoningService]
+RS --> LG[LangGraph StateGraph]
+LG --> MM[MCPMetadataService]
+LG --> MD[MCPDataService]
+LG --> LC[LangChainLLMClient]
+RS --> TS[TraceService]
+RS --> CS[ContextService]
+TS --> DB[(reasoning_trace_event)]
+TS --> LF[LangfuseSink(Optional)]
+CS --> DB
 ```
 
 ---
 
-## 6. M2 主链路设计
-
-### 6.1 流程步骤
-
-1. 输入规范化（query 清洗、租户校验）。
-2. 属性匹配（调用 `attributes:match`）。
-3. 本体定位（调用 `ontologies:by-attributes`）。
-4. 本体详情拉取（调用 `ontologies/{class_id}`）。
-5. 候选关系/能力筛选（结合知识模板）。
-6. 生成执行计划（串行 task list）。
-7. 执行单任务（元数据/数据查询）。
-8. 成功收敛输出；失败进入恢复；多义进入澄清。
-
-### 6.2 澄清触发条件
-
-1. 无候选能力（空列表）。
-2. Top1 与 Top2 分值差低于阈值（默认 0.08）。
-3. 必填参数缺失且无法从上下文推导。
-
-### 6.3 恢复策略
-
-1. 参数类型修正（基于 schema）。
-2. 缺参回填（从 session context 提取）。
-3. 重试（最多 2 次，指数退避）。
-4. 切换候选任务。
-5. 最终失败则结构化返回错误原因与建议。
-
----
-
-## 7. 模块设计（代码增量）
-
-### 7.1 新增模块（建议）
-
-1. `src/app/services/reasoning_service.py`
-2. `src/app/services/context_service.py`
-3. `src/app/services/trace_service.py`
-4. `src/app/api/v1/reasoning.py`
-5. `src/app/schemas/reasoning.py`
-6. `src/app/repositories/reasoning_repo.py`
-
-### 7.2 复用模块
-
-1. `mcp_metadata_service.py`（属性匹配、本体定位、详情、执行细节）
-2. `ontology_service.py`（实体表映射与数据管理能力）
-3. `knowledge_service.py`（关系/能力模板）
-
----
-
-## 8. API 设计（M2 新增）
+## 4. Reasoning API（实际实现）
 
 前缀：`/api/v1/reasoning`
 
 1. `POST /sessions`
-   - 创建会话并写入首条输入。
+   - 入参：`user_input`、`metadata`
+   - 动作：创建 `reasoning_session` + 首轮 `reasoning_turn`，写入初始 trace。
 2. `GET /sessions/{session_id}`
-   - 获取会话状态、当前步骤、最近结果。
+   - 返回会话状态、latest turn、pending clarification、当前 turn 任务列表。
 3. `POST /sessions/{session_id}/run`
-   - 执行一次推理轮次（非流式）。
+   - 若存在 pending clarification，直接返回 `waiting_clarification`。
+   - 否则执行 LangGraph 主链路并返回 `completed` 或 `waiting_clarification`。
 4. `POST /sessions/{session_id}/clarify`
-   - 提交澄清答案并继续执行。
+   - 将 pending clarification 置为 answered，回写 turn 输入并恢复会话为 `created`。
 5. `GET /sessions/{session_id}/trace`
-   - 返回步骤级链路。
+   - 返回 `reasoning_trace_event` 时间序列。
 6. `POST /sessions/{session_id}/cancel`
-   - 取消会话（标记状态）。
-
-补齐系统级数据获取入口（挂在现有 `mcp/metadata` 或新增 `mcp/data`，二选一）：
-1. `POST /api/v1/mcp/data/query`
-2. `POST /api/v1/mcp/data/group-analysis`
-
-M2 约束：
-1. 先支持“有物理表映射”的本体查询分析。
-2. 接口绑定与无实体表模式在 M3 扩展。
+   - 会话标记 `cancelled`，并记录失败类 trace（reason=cancelled_by_user 或传入 reason）。
 
 ---
 
-## 9. 数据模型设计（M2 新增表）
+## 5. 状态机与节点
 
-1. `reasoning_session`
-   - `id, tenant_id, status, created_at, updated_at, ended_at`
-2. `reasoning_turn`
-   - `id, session_id, turn_no, user_input, model_output, status`
-3. `reasoning_task`
-   - `id, session_id, turn_id, task_type, task_payload, status, retry_count`
-4. `reasoning_context`
-   - `id, session_id, scope, key, value_json, version`
-5. `reasoning_trace_event`
-   - `id, session_id, turn_id, step, event_type, payload_json, created_at`
-6. `reasoning_clarification`
-   - `id, session_id, question_json, answer_json, status`
+### 5.1 会话状态（实际出现）
 
-索引建议：
-1. `idx_reasoning_session_tenant_status`
-2. `idx_reasoning_turn_session_turnno`
-3. `idx_reasoning_task_session_status`
-4. `idx_reasoning_trace_session_step`
+1. `created`
+2. `understanding`
+3. `waiting_clarification`
+4. `completed`
+5. `failed`
+6. `cancelled`
 
----
+### 5.2 LangGraph 节点（`ReasoningService`）
 
-## 10. 上下文作用域规则
+1. `parse_intent`
+2. `match_attributes`
+3. `locate_ontologies`
+4. `plan_tasks`
+5. `execute`
+6. `finalize`
 
-1. `global`：租户级静态信息（少改动）。
-2. `session`：会话公共语义（跨轮次）。
-3. `local`：当前步骤临时信息。
-4. `artifact`：可回放、可审计的关键结果。
-
-读写规则：
-1. 默认写 `local`。
-2. 需要跨轮次时显式提升至 `session`。
-3. 输出前将关键结果沉淀为 `artifact`。
+节点间通过 `_use_clarification_path` 判断是否提前结束为澄清分支。
 
 ---
 
-## 11. Trace 设计（M2）
+## 6. 数据执行策略（MCP Data）
 
-### 11.1 事件类型
+`execute` 节点当前策略：
+
+1. 默认执行 `mcp.data.query`。
+2. 当 query 命中关键词（如“分组/统计/group/count/sum/avg/平均”）时执行 `mcp.data.group_analysis`。
+3. group-analysis 依赖本体字段映射，缺失映射时抛出校验错误并进入失败路径。
+
+---
+
+## 7. 审计与可观测
+
+### 7.1 Trace 事件类型（白名单）
 
 1. `intent_parsed`
 2. `attributes_matched`
@@ -236,87 +144,110 @@ M2 约束：
 7. `recovery_triggered`
 8. `session_completed`
 9. `session_failed`
+10. `session_started`
+11. `mcp_call_requested`
+12. `mcp_call_completed`
+13. `llm_prompt_sent`
+14. `llm_response_received`
 
-### 11.2 追踪字段
+非白名单事件会被归一为 `session_failed` 并保留 `raw_event_type`。
 
-1. `trace_id`（沿用现有响应结构）
-2. `session_id`
-3. `turn_no`
-4. `step_name`
-5. `latency_ms`
-6. `error_code/error_message`
+### 7.2 双写策略
 
----
-
-## 12. 与需求文档对齐说明
-
-对应 `Docs/Project_TheWorld_需求清单.md`：
-
-1. 2.1（系统 MCP，高）：
-   - M1 已完成元数据四接口；
-   - M2 补齐数据查询/分组分析统一入口（先物理表本体）。
-2. 2.2（推理引导框架，高）：
-   - M2 主目标，完成串行可解释闭环。
-3. 2.3（能力动态加载，中）：
-   - M2 提供轻量 tool selection（按本轮候选本体过滤），复杂 registry 治理放 M3。
-4. 2.4/2.5（会话管理、上下文管理，中）：
-   - M2 提供单会话模型与作用域；
-   - 并行子会话、记忆压缩策略深化放 M3。
-5. 2.6（推理链路追踪，高）：
-   - M2 提供事件化 trace 落库和查询接口。
+1. 主存储：`reasoning_trace_event`（DB）。
+2. 可选下沉：Langfuse（由 `observability/langfuse` 配置控制）。
+3. Graph 页通过 `GET /api/v1/reasoning/sessions/{session_id}/trace` 展示 Audit Timeline。
 
 ---
 
-## 13. 实施计划（建议）
+## 8. 数据模型（当前数据库）
 
-1. Sprint A：数据表与基础 API（session/turn/context/trace）。
-2. Sprint B：reasoning 主链路（定位、规划、执行、输出）。
-3. Sprint C：澄清与恢复机制。
-4. Sprint D：数据查询/分组分析 MCP 补齐。
-5. Sprint E：联调与回归测试、文档固化。
+### 8.1 Reasoning 相关表
 
----
+1. `reasoning_session`
+2. `reasoning_turn`
+3. `reasoning_task`
+4. `reasoning_context`
+5. `reasoning_trace_event`
+6. `reasoning_clarification`
 
-## 14. 测试设计
+索引由 ORM/迁移创建，主要为：
 
-### 14.1 单元测试
+1. `reasoning_session.tenant_id`
+2. `reasoning_turn.session_id` + 唯一约束 `(session_id, turn_no)`
+3. `reasoning_task.session_id/turn_id/status`
+4. `reasoning_context.session_id/scope/key`
+5. `reasoning_trace_event.session_id/turn_id/step/event_type/trace_id`
+6. `reasoning_clarification.session_id/turn_id/status`
 
-1. 计划生成规则。
-2. 澄清触发判定。
-3. 恢复策略（重试/切换）判定。
-4. 上下文作用域读写。
+### 8.2 Config/租户相关表（与 M2 运行强关联）
 
-### 14.2 集成测试
-
-1. 输入 -> 属性匹配 -> 本体定位 -> 执行 -> 输出闭环。
-2. 多候选触发澄清并继续执行。
-3. 执行失败后恢复成功。
-4. Trace 事件完整性与顺序性。
-
-### 14.3 验收指标（M2）
-
-1. 主链路成功率 >= 90%（标准测试集）。
-2. 可恢复错误恢复成功率 >= 80%。
-3. 单轮非外部阻塞执行 P95 < 2500ms。
-4. 每轮均可查询结构化 trace 事件。
-
----
-
-## 15. 风险与缓解
-
-1. 风险：推理链路过长导致稳定性波动。  
-   缓解：先串行、先短链路、分步上线。
-2. 风险：知识质量影响任务选择。  
-   缓解：增加模板校验与回归样例集。
-3. 风险：接口绑定本体的数据获取能力不完整。  
-   缓解：M2 限定物理表本体，接口模式延后。
+1. `tenant_llm_config`
+   - 按 tenant 保存 provider/model/base_url/timeout/api_key_cipher 等。
+   - 支持 provider 级 API Key 隔离存储（加密后存储）。
+2. `tenant_runtime_config`
+   - `search_config` 下保存租户级检索参数：
+     - `word_w_sparse/word_w_dense`
+     - `sentence_w_sparse/sentence_w_dense`
+     - `top_n/score_gap/relative_diff`
+     - `backfill_batch_size`
+3. `system_runtime_config`
+   - 保存系统级配置（如 Langfuse 运行参数）。
+4. `active_tenant`
+   - 记录触达 API 的租户：`tenant_id/is_active/first_seen_at/last_seen_at`。
 
 ---
 
-## 16. M2 Done Definition
+## 9. Config API（当前实现）
 
-1. `reasoning` API 全部可用且有测试覆盖。
-2. 单会话推理主链路可稳定运行。
-3. 澄清与恢复闭环可复现。
-4. trace 可查询并可用于问题定位。
-5. 文档、接口、实现一致。
+前缀：`/api/v1/config`
+
+1. `GET/PUT /tenant-llm`
+2. `POST /tenant-llm:verify`
+3. `GET/PUT /tenant-search-config`
+4. `GET/PUT /observability/langfuse`
+5. `GET /active-tenants`
+
+说明：
+
+1. `tenant-search-config` 已作为 Graph/Console 检索参数的真实来源。
+2. 中间件会在 API 请求携带 `X-Tenant-Id` 时自动 touch `active_tenant`。
+
+---
+
+## 10. 迁移与兼容策略
+
+当前迁移：
+
+1. `20260218_0001`：M1 baseline
+2. `20260219_0002`：reasoning 相关表
+3. `20260219_0003`：tenant_llm_config
+4. `20260219_0004`：active_tenant
+
+兼容说明：
+
+1. `20260219_0002~0004` 已实现幂等创建（存在则跳过），兼容历史环境先建表后迁移的场景。
+2. 服务启动仍保留 `_ensure_runtime_schema` 做少量兼容补列。
+
+---
+
+## 11. 测试覆盖（当前）
+
+1. `tests/integration/test_reasoning_session_flow.py`
+   - 覆盖 create/run/clarify/trace 基本流程。
+2. `tests/integration/test_mcp_data_flow.py`
+   - 覆盖 query/group-analysis。
+3. `tests/integration/test_tenant_llm_config_flow.py`
+   - 覆盖 tenant-llm、tenant-search-config、langfuse config、active-tenants。
+4. `tests/unit/test_llm_provider_factory.py`
+   - 覆盖 LLM provider factory 路由与构建。
+
+---
+
+## 12. M2 完成定义（按当前代码）
+
+1. reasoning 主链路可运行并可审计。
+2. 澄清流程可闭环。
+3. MCP Data 能力已接入执行节点。
+4. 审计事件可在 DB 查询，并可选同步到 Langfuse。
+5. 租户级 LLM/检索配置可持久化并参与运行时行为。

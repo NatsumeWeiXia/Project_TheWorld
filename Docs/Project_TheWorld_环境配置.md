@@ -81,3 +81,63 @@ def embed(req: Request):
     )
     return {"embeddings": vectors.tolist()}
 ```
+
+### 3. 云端服务
+
+**3.1 LLM Service:** 
+
+​	**3.1.1 Deepseek：**
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    api_key={your-api-key},
+    base_url="https://api.deepseek.com")
+
+response = client.chat.completions.create(
+    model="deepseek-reasoner",
+    messages=[
+        {"role": "system", "content": "{your-system-content}"},
+        {"role": "user", "content": "{your-user-content}"},
+    ],
+    stream=true
+)
+
+print(response.choices[0].message.content)
+```
+
+​	**3.1.2 Qwen：**
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    api_key={your-api-key},
+    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+)
+
+completion = client.chat.completions.create(
+    model="qwen3.5-plus",  
+    messages=messages=[
+        {"role": "system", "content": "{your-system-content}"},
+        {"role": "user", "content": "{your-user-content}"},
+    ],
+    extra_body={"enable_thinking": True},
+    stream=True
+)
+
+is_answering = False  # 是否进入回复阶段
+print("\n" + "=" * 20 + "思考过程" + "=" * 20)
+for chunk in completion:
+    delta = chunk.choices[0].delta
+    if hasattr(delta, "reasoning_content") and delta.reasoning_content is not None:
+        if not is_answering:
+            print(delta.reasoning_content, end="", flush=True)
+    if hasattr(delta, "content") and delta.content:
+        if not is_answering:
+            print("\n" + "=" * 20 + "完整回复" + "=" * 20)
+            is_answering = True
+        print(delta.content, end="", flush=True)
+```
+
